@@ -16,7 +16,7 @@ Working with multiple servers and transferring files via terminal can be tedious
 - ✅ SSH connection management with saved profiles
 - ✅ Interactive SFTP file browser (like a terminal file explorer)
 - ✅ Multiple file upload/download operations
-- ✅ Drag & drop support for easy file transfers
+- ✅ Smart file path input (drag files from Finder to paste paths)
 - ✅ Smart file selection with ranges (1,3-7,9)
 - ✅ Directory synchronization with rsync
 - ✅ Smart destination presets (Desktop, Downloads, etc.)
@@ -94,7 +94,7 @@ That's it! The tool will automatically read your existing SSH config and create 
 
 ### **File Browser Operations**
 - **Navigate**: Type numbers (1-5) to enter folders or select files
-- **Upload single**: Type `u` → select file from list or drag & drop
+- **Upload single**: Type `u` → select file from list or paste file path
 - **Upload multiple**: Type `um` → select ranges like `1,3-7,9`  
 - **Download single**: Type `d` → choose file → pick destination
 - **Download multiple**: Type `dm` → select ranges → choose destination
@@ -116,7 +116,7 @@ File numbers: 1,3-7,9      # Select files 1, 3-7, and 9
 | SSH Management | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Visual SFTP Browser | ✅ | ✅ | ❌ | ✅ | ✅ |
 | Multiple File Ops | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Drag & Drop Support | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Smart Path Input | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Range Selection | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Pure Terminal | ✅ | ❌ | ✅ | ✅ | ❌ |
 | No Dependencies | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -158,7 +158,7 @@ Visual file browser eliminates the need to remember file paths. Just navigate wi
 - Range selection for multiple files (`1,3-7,9`)
 - Smart destinations (Desktop, Downloads)  
 - Incremental sync for large directories
-- Drag & drop support for quick transfers
+- Smart file path handling for quick transfers
 
 ### **🛡️ Safety & Reliability**
 - Progress tracking for all operations
