@@ -75,7 +75,11 @@ class SSHManager:
     def save_config(self):
         """Save hosts back to SSH config file"""
         config_lines = []
-        
+
+        # IgnoreUnknown keeps the config compatible across platforms
+        # (e.g. macOS-only UseKeychain must not break Linux ssh)
+        config_lines.append("IgnoreUnknown UseKeychain")
+
         for host_name, config in self.hosts.items():
             config_lines.append(f"Host {host_name}")
             if config['hostname']:
@@ -94,13 +98,15 @@ class SSHManager:
         
         # Add default settings
         config_lines.extend([
-            "# Default settings for all hosts",
             "Host *",
             "  AddKeysToAgent yes",
-            "  UseKeychain yes",
             "  ServerAliveInterval 60",
             "  ServerAliveCountMax 3"
         ])
+        # UseKeychain is macOS-only; writing it on Linux makes ssh fail with
+        # "Bad configuration option: UseKeychain" for every connection
+        if sys.platform == "darwin":
+            config_lines.append("  UseKeychain yes")
         
         with open(self.ssh_config_path, 'w') as f:
             f.write('\n'.join(config_lines))

@@ -10,24 +10,46 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Create bin directory if it doesn't exist
-mkdir -p ~/bin
+mkdir -p "$HOME/bin"
 
 # Copy the script to bin directory
-cp ssh-fm.py ~/bin/ssh-fm
-chmod +x ~/bin/ssh-fm
+cp ssh-fm.py "$HOME/bin/ssh-fm"
+chmod +x "$HOME/bin/ssh-fm"
+
+# Detect the user's shell config file (works on macOS and Linux)
+SHELL_RC=""
+case "$SHELL" in
+    */zsh)
+        SHELL_RC="$HOME/.zshrc"
+        ;;
+    */bash)
+        SHELL_RC="$HOME/.bashrc"
+        ;;
+    */fish)
+        SHELL_RC="$HOME/.config/fish/config.fish"
+        ;;
+    *)
+        SHELL_RC="$HOME/.profile"
+        ;;
+esac
+
+# Fallback: if the detected config file doesn't exist, use ~/.profile
+if [ ! -f "$SHELL_RC" ]; then
+    SHELL_RC="$HOME/.profile"
+fi
 
 # Add ~/bin to PATH if not already present
 if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
-    echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
-    echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
-    echo "✅ Added ~/bin to PATH in shell configuration"
+    mkdir -p "$(dirname "$SHELL_RC")"
+    echo 'export PATH="$HOME/bin:$PATH"' >> "$SHELL_RC"
+    echo "✅ Added ~/bin to PATH in $SHELL_RC"
 fi
 
 echo ""
 echo "🎉 ssh-fm installed successfully!"
 echo ""
 echo "📋 Next steps:"
-echo "1. Restart your terminal or run: source ~/.zshrc"
+echo "1. Restart your terminal or run: source $SHELL_RC"
 echo "2. Run: ssh-fm"
 echo ""
 echo "💡 Need help? Check the README.md file"
