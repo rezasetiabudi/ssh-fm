@@ -16,7 +16,7 @@ Working with multiple servers and transferring files via terminal can be tedious
 - ✅ SSH connection management with saved profiles
 - ✅ Interactive SFTP file browser (like a terminal file explorer)
 - ✅ Multiple file upload/download operations
-- ✅ Smart file path input (drag files from Finder to paste paths)
+- ✅ Smart file path input (drag files from your file manager to paste paths)
 - ✅ Smart file selection with ranges (1,3-7,9)
 - ✅ Directory synchronization with rsync
 - ✅ Smart destination presets (Desktop, Downloads, etc.)
@@ -106,21 +106,6 @@ File numbers: 1,3,5        # Select files 1, 3, and 5
 File numbers: 1-5          # Select files 1 through 5  
 File numbers: 1,3-7,9      # Select files 1, 3-7, and 9
 ```
-
----
-
-## 🆚 Comparison with Existing Tools
-
-| Feature | ssh-fm | Termius | storm-ssh | ranger+SFTP | FileZilla CLI |
-|---------|-------------|---------|-----------|-------------|---------------|
-| SSH Management | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Visual SFTP Browser | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Multiple File Ops | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Smart Path Input | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Range Selection | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Pure Terminal | ✅ | ❌ | ✅ | ✅ | ❌ |
-| No Dependencies | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Cost | Free | Paid Pro | Free | Free | Free |
 
 ---
 
