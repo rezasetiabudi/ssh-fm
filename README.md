@@ -1,181 +1,132 @@
-# 🔑 ssh-fm - SSH File Manager CLI
+# ssh-fm — SSH Connection Manager & SFTP File Browser
 
-> A lightweight, user-friendly terminal tool for managing SSH connections and file transfers with an interactive browser interface.
+Terminal UI untuk mengelola koneksi SSH dan transfer file (SFTP/scp/rsync) dalam satu layar, dengan layout dua panel ber-bor (hosts di kiri, remote file browser di kanan). Dibangun dengan [Textual](https://github.com/Textualize/textual).
 
-## 🚀 Why ssh-fm?
+## Fitur
 
-Working with multiple servers and transferring files via terminal can be tedious. Most existing tools either focus on just SSH connections OR just file transfers, but rarely both with a great user experience.
+- **Manajemen host SSH** — tambah, edit, hapus, dan connect ke host yang tersimpan.
+- **Auto-detect SSH config** — baca & tulis langsung ke `~/.ssh/config`, termasuk profile yang sudah ada.
+- **Remote file browser** — jelajahi direktori remote dengan warna dan ikon, sama seperti file manager.
+- **Upload & download** — single atau multiple file, dengan seleksi range seperti `1,3-7,9`.
+- **Rsync** — sinkronisasi direktori dua arah (local ↔ remote).
+- **View file** — lihat isi file remote tanpa download.
+- **Destination presets** — unduh ke current directory, Desktop, Downloads, atau path custom.
+- **Auto-detect SSH key** — daftar key dari `~/.ssh` ditawarkan saat menambah host.
 
-**ssh-fm** combines everything you need in one simple, interactive CLI tool.
+## Shortcut Keyboard
 
----
+### Global
+| Key | Aksi |
+| --- | --- |
+| `q` | Quit / Back (keluar dari browser dulu, lalu keluar app) |
+| `esc` | Back / Cancel |
+| `ctrl+q` | Keluar app (berfungsi dari state mana pun, termasuk di dalam dialog) |
+| `tab` | Pindah panel (hosts ↔ browser) |
 
-## ✨ Features
+### Panel Hosts
+| Key | Aksi |
+| --- | --- |
+| `Enter` | Connect ke host (ssh) |
+| `b` | Browse file host |
+| `a` | Tambah host |
+| `e` | Edit host |
+| `x` | Hapus host |
+| `r` | Rsync (host-level) |
 
-### 🔥 **All-in-One Solution**
-- ✅ SSH connection management with saved profiles
-- ✅ Interactive SFTP file browser (like a terminal file explorer)
-- ✅ Multiple file upload/download operations
-- ✅ Smart file path input (drag files from your file manager to paste paths)
-- ✅ Smart file selection with ranges (1,3-7,9)
-- ✅ Directory synchronization with rsync
-- ✅ Smart destination presets (Desktop, Downloads, etc.)
+### Panel Browser
+| Key | Aksi |
+| --- | --- |
+| `Enter` | Buka file / masuk direktori |
+| `backspace` | Naik satu level |
+| `p` | Set path manual |
+| `u` / `U` | Upload single / multi |
+| `d` / `D` | Download single / multi |
+| `v` | View isi file |
+| `i` | Info file |
+| `r` | Rsync direktori |
 
-### 🎯 **User Experience Focus**
-- **Visual file browser** with emojis and colors
-- **Intuitive navigation** - just type numbers to navigate
-- **Smart file operations** - no need to remember complex paths
-- **Progress tracking** for batch operations
-- **Error handling** with clear success/failure indicators
+> Catatan: di dalam dialog form, `q` akan terisi ke kolom input (bukan menutup dialog). Gunakan `esc` untuk cancel dialog, atau `ctrl+q` untuk keluar app.
 
-### 🚫 **No Dependencies**
-- **Pure Python** (built-in on macOS/Linux)
-- **No npm/pip installations** required
-- **Self-contained script** - just download and run
-- **Works with existing SSH config**
+## Kebutuhan (Requirements)
 
----
+- Python 3.8+
+- Library Python: `textual`
+- Tool sistem: `ssh`, `scp`, `rsync` (sudah ada di macOS/Linux default)
 
-## 📸 Interface Preview
+## Instalasi
 
-```
-============================================================
-🔑 SSH CONNECTION MANAGER
-============================================================
+### 1. Otomatis (disarankan)
 
-📁 Remote File Browser - server:/home/user
-
-Contents:
- 1. 📁 projects
- 2. 📁 documents  
- 3. 📄 config.json
- 4. 📄 deploy.sh
- 5. 📄 README.md
-
-Options:
-[1-5] Navigate to item    dm  Download multiple files
-d     Download file       um  Upload multiple files  
-u     Upload file         p   Change path manually
-q     Back to menu
-```
-
----
-
-## 🛠️ Installation & Setup
-
-### 1. Download the Script
 ```bash
-# Copy the ssh-fm.py script to your system
-chmod +x ssh-fm.py
-
-# Make it globally available
-mkdir -p ~/bin
-cp ssh-fm.py ~/bin/ssh-fm
-echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+./install.sh
 ```
 
-### 2. Run ssh-fm
+Script ini akan:
+1. Menginstall library `textual` (dengan fallback `--break-system-packages` untuk sistem dengan PEP 668).
+2. Menyalin `ssh-fm.py` ke `~/bin/ssh-fm`.
+3. Menambahkan `~/bin` ke `PATH` di file config shell kamu (`.zshrc`/`.bashrc`/dll).
+
+Setelah selesai, restart terminal atau jalankan `source ~/.zshrc`, lalu:
+
 ```bash
 ssh-fm
 ```
 
-That's it! The tool will automatically read your existing SSH config and create an interactive menu.
+### 2. Manual
 
----
-
-## 🎮 How to Use
-
-### **Adding SSH Hosts**
-1. Choose "Add new host" from main menu
-2. Enter server details (IP, port, username)  
-3. Select authentication method (SSH key or password)
-4. Host is automatically saved to your SSH config
-
-### **File Browser Operations**
-- **Navigate**: Type numbers (1-5) to enter folders or select files
-- **Upload single**: Type `u` → select file from list or paste file path
-- **Upload multiple**: Type `um` → select ranges like `1,3-7,9`  
-- **Download single**: Type `d` → choose file → pick destination
-- **Download multiple**: Type `dm` → select ranges → choose destination
-- **Quick navigation**: Type `p` to jump to any path directly
-
-### **Multiple File Selection Examples**
 ```bash
-File numbers: 1,3,5        # Select files 1, 3, and 5
-File numbers: 1-5          # Select files 1 through 5  
-File numbers: 1,3-7,9      # Select files 1, 3-7, and 9
+# Install dependency
+python3 -m pip install textual
+
+# Jika error "externally-managed-environment" (PEP 668):
+python3 -m pip install --user --break-system-packages textual
+
+# Copy script
+mkdir -p ~/bin
+cp ssh-fm.py ~/bin/ssh-fm
+chmod +x ~/bin/ssh-fm
+export PATH="$HOME/bin:$PATH"
 ```
 
----
+## Cara Pakai
 
-## 💡 Use Cases
+1. Jalankan `ssh-fm`. Daftar host dari `~/.ssh/config` otomatis muncul di panel kiri.
+2. Pilih host lalu tekan `b` untuk masuk ke file browser remote.
+3. Navigasi dengan `Enter` (masuk) / `backspace` (naik), atau `p` untuk lompat ke path tertentu.
+4. Gunakan `u`/`d`/`v`/`r` untuk upload, download, view, dan rsync.
+5. Tekan `q` untuk kembali ke daftar host, lalu `q` lagi untuk keluar.
 
-### **👨‍💻 Developers**
-- Deploy code to multiple servers
-- Quick file transfers during development  
-- Manage development/staging/production environments
-- Backup project files from remote servers
+### Seleksi Range File
 
-### **🔧 System Administrators** 
-- Manage multiple server connections
-- Bulk file operations across servers
-- Quick configuration file transfers
-- Server maintenance and file management
+| Contoh | Arti |
+| --- | --- |
+| `1,3,5` | File nomor 1, 3, dan 5 |
+| `1-5` | File nomor 1 sampai 5 |
+| `1,3-7,9` | File nomor 1, 3–7, dan 9 |
 
-### **📊 Data Engineers**
-- Transfer data files between servers
-- Manage ETL scripts across environments
-- Quick access to log files and configs
-- Synchronize directories for data pipelines
+## Konfigurasi
 
----
+- Semua host disimpan di **`~/.ssh/config`** — bisa dibaca, diedit, dan dikelola oleh tool ini, dan tetap kompatibel dengan perintah `ssh` biasa.
+- SSH key dideteksi otomatis dari direktori `~/.ssh`.
 
-## 🎯 Why This Tool Rocks
+## Troubleshooting
 
-### **🚀 Productivity Boost**
-No more remembering complex `scp` commands or switching between multiple tools. Everything you need is in one place with an intuitive interface.
+- **`ModuleNotFoundError: No module named 'textual'`** — install textual (lihat Instalasi di atas). Ini penyebab paling umum, terutama di macOS yang memakai Homebrew Python (terkena PEP 668).
+- **Host tidak muncul** — pastikan ada entri Host di `~/.ssh/config`.
+- **Koneksi minta password terus** — pastikan SSH key sudah di-`ssh-copy-id`, atau pilih autentikasi password saat menambah host.
 
-### **🧠 Cognitive Load Reduction**  
-Visual file browser eliminates the need to remember file paths. Just navigate with numbers like browsing folders in a GUI.
+## Teknis
 
-### **⚡ Speed & Efficiency**
-- Range selection for multiple files (`1,3-7,9`)
-- Smart destinations (Desktop, Downloads)  
-- Incremental sync for large directories
-- Smart file path handling for quick transfers
+| Item | Detail |
+| --- | --- |
+| Bahasa | Python 3 |
+| UI Framework | Textual |
+| Dependensi Python | `textual` |
+| Dependensi sistem | `ssh`, `scp`, `rsync` |
+| Ukuran | Single file `ssh-fm.py` (~45 KB) |
+| Konfigurasi | `~/.ssh/config` |
+| Kompatibilitas | macOS, Linux, WSL |
 
-### **🛡️ Safety & Reliability**
-- Progress tracking for all operations
-- Clear success/failure indicators
-- Works with your existing SSH keys and config
-- No external dependencies to break
+## Lisensi
 
----
-
-## 📝 Technical Details
-
-- **Language**: Python 3 (built-in on macOS/Linux)
-- **Dependencies**: None (uses standard library + system SSH/SCP)
-- **Size**: Single ~50KB script file
-- **Compatibility**: macOS, Linux, WSL on Windows
-- **SSH Config**: Automatically reads and writes to `~/.ssh/config`
-
----
-
-## 🤝 Contributing & Feedback
-
-Found this useful? Have suggestions for improvements? 
-
-- **Share with your team** if it helps your workflow
-- **Customize** the script for your specific needs
-- **Report issues** or suggest features
-
----
-
-**💪 Built for developers, by developers. Simple tools for complex workflows.**
-
----
-
-### 🏷️ Tags
-`#SSH` `#SFTP` `#CLI` `#DevTools` `#Terminal` `#FileTransfer` `#Productivity` `#Linux` `#macOS` `#DevOps`
+MIT — lihat file [LICENSE](LICENSE).

@@ -9,6 +9,23 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+# Install the 'textual' dependency (required by ssh-fm)
+if ! python3 -c "import textual" &> /dev/null; then
+    echo "🔧 Installing 'textual' dependency..."
+    if python3 -m pip install textual &> /dev/null; then
+        echo "✅ textual installed"
+    else
+        echo "⚠️  Standard pip install failed (PEP 668?). Retrying with --break-system-packages..."
+        python3 -m pip install --user --break-system-packages textual || {
+            echo "❌ Failed to install 'textual'. Install it manually: python3 -m pip install textual"
+            exit 1
+        }
+        echo "✅ textual installed"
+    fi
+else
+    echo "✅ textual already installed"
+fi
+
 # Create bin directory if it doesn't exist
 mkdir -p "$HOME/bin"
 
