@@ -23,8 +23,8 @@ class FakeConnection:
     def try_master(self):
         return self.master
 
-    def open_master(self):
-        return 0
+    def master_cmd(self, batch=False):
+        return ["true"]
 
     def close(self):
         self.calls.append("close")
@@ -52,5 +52,5 @@ class FakeConnection:
     def shell_cmd(self):
         return ["fake-ssh", self.host]
 
-    def sftp_cmd(self):
-        return ["fake-sftp", self.host]
+    def sftp_cmd(self, path=None):
+        return ["fake-sftp", self.host] + ([path] if path else [])

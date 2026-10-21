@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 - All remote operations reuse one ssh ControlMaster connection (password / passphrase prompted once).
 
 ### Added
+- SFTP split view (`t`): remote files on top, local files below, drag & drop rows between panes to transfer.
+- Embedded terminal (pty + pyte): ssh shell, terminal sftp and password / passphrase / host-key prompts now run inside the UI; nothing suspends to the outer terminal. Requires `pyte`.
 - Command palette (`ctrl+p`), host form modals, multi-select with `space`, file filter, hidden-file toggle.
 - Transfer queue with progress bar, speed and ETA (rsync).
 - `.pem` / `.key` identity files (picked from `~/.ssh` or any path, auto `chmod 600`).

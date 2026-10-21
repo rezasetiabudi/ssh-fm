@@ -7,6 +7,7 @@ from textual.widgets import Input
 from ssh_fm.modals import TextViewScreen
 from ssh_fm.remote import Progress
 from ssh_fm.screens import BrowserScreen
+from ssh_fm.terminal import TerminalScreen
 from tests.fakes import FakeConnection, e
 from tests.test_browser import go_to, make_app, open_browser, settle
 
@@ -130,19 +131,45 @@ async def test_upload_existing_files_queues_each(tmp_path, monkeypatch):
         assert all(c[1] == "up" and c[3].endswith("/") for c in calls)
 
 
-async def test_ssh_shell_uses_suspend(tmp_path, monkeypatch):
-    ran, entered = [], []
-
-    @contextmanager
-    def fake_suspend():
-        entered.append(1)
-        yield
-
-    monkeypatch.setattr("ssh_fm.screens.subprocess.run", lambda cmd, *a, **k: ran.append(cmd))
+async def test_ssh_shell_opens_embedded_terminal(tmp_path):
     app = make_app(tmp_path)
-    monkeypatch.setattr(app, "suspend", fake_suspend)
     async with app.run_test() as pilot:
-        await open_browser(app, pilot)
+        screen = await open_browser(app, pilot)
         await pilot.press("S")
         await settle(pilot)
-        assert ran == [["fake-ssh", "web"]] and entered
+        assert isinstance(app.screen, TerminalScreen) and app.screen.cmd == ["fake-ssh", "web"]
+        await pilot.press("x")  # process failed to start (no such command): any key closes
+        await settle(pilot)
+        assert app.screen is screen
+
+
+async def test_sftp_opens_in_current_directory(tmp_path):
+    app = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        await open_browser(app, pilot)
+        app.screen.cwd = "/srv/app"
+        await pilot.press("T")
+        await settle(pilot)
+        assert isinstance(app.screen, TerminalScreen) and app.screen.cmd == ["fake-sftp", "web", "/srv/app"]
+
+
+async def test_drag_between_panes_transfers(tmp_path, monkeypatch):
+    calls, _ = patch_transfer(monkeypatch)
+    (tmp_path / "local.txt").write_text("x")
+    app = make_app(tmp_path)
+    async with app.run_test(size=(140, 50)) as pilot:
+        screen = await open_browser(app, pilot)
+        screen.local_cwd = tmp_path
+        await pilot.press("t")
+        await settle(pilot)
+        remote, local = screen.query_one("#files"), screen.query_one("#local-files")
+        row = local.get_row_index("local.txt")
+        await pilot.mouse_down(local, offset=(5, row + 1))
+        await pilot.mouse_up(remote, offset=(5, 2))
+        await settle(pilot)
+        assert calls and calls[0][1] == "up" and calls[0][2] == str(tmp_path / "local.txt")
+        row = remote.get_row_index("index.php")
+        await pilot.mouse_down(remote, offset=(5, row + 1))
+        await pilot.mouse_up(local, offset=(5, 2))
+        await settle(pilot)
+        assert calls[-1][1] == "down" and calls[-1][3] == "web:/home/deploy/index.php"

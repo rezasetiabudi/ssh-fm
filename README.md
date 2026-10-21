@@ -8,7 +8,7 @@ Terminal UI untuk mengelola koneksi SSH dan transfer file dalam satu aplikasi: p
 - **Browser 3 panel** — host di kiri, isi folder remote di tengah, info file (ukuran, permission, owner, tanggal, tipe) di kanan, dan antrean transfer di bawah.
 - **Transfer dengan progress langsung** — upload/download satu atau banyak file (tandai dengan `space`), progress bar, kecepatan, dan ETA. Memakai `rsync`.
 - **Sync direktori** dua arah (local ↔ remote) dengan rsync.
-- **View file** kecil (50 baris pertama) tanpa download, plus sesi SFTP dan SSH shell langsung dari aplikasi.
+- **View file** kecil (50 baris pertama) tanpa download, plus panel SFTP split (server di atas, lokal di bawah, drag & drop), SFTP terminal, dan SSH shell — semuanya berjalan di dalam jendela ssh-fm (terminal tertanam, `Ctrl+]` untuk menutup).
 - **Command palette** (`ctrl+p`) untuk semua aksi.
 - **Manajemen host** lewat form — tambah, edit, rename, hapus. Disimpan di `~/.ssh/config`.
 - **Key `.pem` / `.key`** — pilih dari `~/.ssh` atau ketik path bebas; permission otomatis di-`chmod 600`.
@@ -34,7 +34,8 @@ Terminal UI untuk mengelola koneksi SSH dan transfer file dalam satu aplikasi: p
 | `u` / `d` | Upload / download (yang ditandai atau yang disorot) |
 | `v` | Lihat isi file |
 | `s` | Sync direktori (rsync) |
-| `t` / `S` | Sesi SFTP / SSH shell |
+| `t` | Panel SFTP split: file lokal di bawah, drag & drop antar panel |
+| `T` / `S` | Sesi sftp terminal / SSH shell (tertanam, `Ctrl+]` menutup) |
 | `.` | Tampil/sembunyikan dotfiles |
 | `/` | Filter file |
 | `r` | Refresh |

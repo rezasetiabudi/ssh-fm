@@ -86,7 +86,7 @@ def quote_path(path):
 
 def run_transfer(cmd, on_progress):
     """Run rsync/scp, streaming progress. Returns the exit code."""
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     buf = ""
     for chunk in iter(lambda: proc.stdout.read(64), ""):
         buf += chunk
@@ -117,8 +117,10 @@ class Connection:
     def shell_cmd(self):
         return ["ssh", *self.ssh_opts(), self.host]
 
-    def sftp_cmd(self):
-        return ["sftp", *self.ssh_opts(), self.host]
+    def sftp_cmd(self, path=None):
+        """sftp session; with `path` it starts in that remote directory (~ is expanded first)."""
+        target = f"{self.host}:{self.expand(path)}" if path else self.host
+        return ["sftp", *self.ssh_opts(), target]
 
     def list_cmd(self, path):
         return f"LC_ALL=C ls -la -- {quote_path(path)}"
@@ -132,25 +134,21 @@ class Connection:
     # --- master connection ------------------------------------------------
     def try_master(self):
         """Silent attempt (no prompts). Returns (returncode, stderr)."""
-        r = subprocess.run(self.master_cmd(batch=True), capture_output=True, text=True)
+        r = subprocess.run(self.master_cmd(batch=True), stdin=subprocess.DEVNULL, capture_output=True, text=True)
         return r.returncode, r.stderr
 
-    def open_master(self):
-        """Interactive (password / passphrase prompts); run inside app.suspend()."""
-        return subprocess.run(self.master_cmd()).returncode
-
     def is_alive(self):
-        r = subprocess.run(["ssh", *self.ssh_opts(), "-O", "check", self.host], capture_output=True)
+        r = subprocess.run(["ssh", *self.ssh_opts(), "-O", "check", self.host], stdin=subprocess.DEVNULL, capture_output=True)
         return r.returncode == 0
 
     def close(self):
-        subprocess.run(["ssh", *self.ssh_opts(), "-O", "exit", self.host], capture_output=True)
+        subprocess.run(["ssh", *self.ssh_opts(), "-O", "exit", self.host], stdin=subprocess.DEVNULL, capture_output=True)
 
     # --- remote commands --------------------------------------------------
     def run(self, command, timeout=15):
         try:
             r = subprocess.run(["ssh", *self.ssh_opts(), "-o", "BatchMode=yes", self.host, command],
-                               capture_output=True, text=True, timeout=timeout)
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             raise RemoteError(f"Timed out running: {command}")
         if r.returncode != 0:

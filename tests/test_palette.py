@@ -32,7 +32,7 @@ async def test_browser_only_commands_hidden_on_picker(tmp_path):
         assert "Upload" not in labels(SshFmCommands(app.screen))
         screen = await open_browser(app, pilot)
         got = labels(SshFmCommands(screen))
-        assert {"Upload", "Download", "Sync directory", "SFTP session", "SSH shell", "Toggle hidden files",
+        assert {"Upload", "Download", "Sync directory", "SFTP split view", "SFTP terminal", "SSH shell", "Toggle hidden files",
                 "Refresh", "Back to hosts"} <= set(got)
         assert "New host" not in got
 

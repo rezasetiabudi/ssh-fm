@@ -27,6 +27,9 @@ ModalScreen { align: center middle; background: #00000080; }
 #path { padding: 0 1; color: #9aa5ce; }
 #info { width: 36; padding: 1 2; border-left: solid #3b4261; background: #16161e; }
 #files { height: 1fr; }
+#local-box { height: 1fr; border-top: solid #3b4261; }
+#local-path { padding: 0 1; color: #9aa5ce; }
+#local-files { height: 1fr; }
 LoadingIndicator { height: 3; color: $accent; }
 
 #transfers { height: auto; max-height: 8; border-top: solid #3b4261; background: #16161e; }

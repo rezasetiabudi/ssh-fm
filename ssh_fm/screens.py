@@ -1,7 +1,7 @@
 """Main screens: host picker (start) and remote browser"""
 
 import asyncio
-import subprocess
+import os
 import threading
 from collections import deque
 from pathlib import Path
@@ -18,6 +18,7 @@ from textual.widgets.option_list import Option
 from .modals import (ConfirmScreen, DestinationScreen, HostFormScreen, PathPromptScreen, SyncScreen,
                      TextViewScreen)
 from .remote import RemoteError, join_path, run_transfer
+from .terminal import TerminalScreen
 from .widgets import TransferPanel
 
 PROMPT_HINTS = ("permission denied", "passphrase", "password", "host key verification")
@@ -194,8 +195,8 @@ class ConnectingScreen(ModalScreen):
         if not self.host.password_auth:
             rc, err = await asyncio.to_thread(self.conn.try_master)
         if rc != 0 and (self.host.password_auth or any(h in err.lower() for h in PROMPT_HINTS)):
-            with self.app.suspend():  # let ssh prompt for password / passphrase / host key
-                rc = self.conn.open_master()
+            # ssh prompts for password / passphrase / host key inside an embedded terminal
+            rc = await self.app.push_screen_wait(TerminalScreen(f"ssh {self.host.name}", self.conn.master_cmd()))
             err = "" if rc == 0 else f"ssh exited with status {rc}"
         self.dismiss(None if rc == 0 else (err.strip() or "Connection failed"))
 
@@ -219,7 +220,8 @@ class BrowserScreen(Screen):
         Binding("d", "download", "Download"),
         Binding("v", "view", "View"),
         Binding("s", "sync", "Sync"),
-        Binding("t", "sftp", "SFTP"),
+        Binding("t", "local", "SFTP split"),
+        Binding("T", "sftp", "sftp term", show=False),
         Binding("S", "shell", "Shell"),
         Binding("escape", "back", "Hosts"),
     ]
@@ -236,6 +238,8 @@ class BrowserScreen(Screen):
         self._by_name = {}
         self.queue = deque()
         self.running = False
+        self.local_cwd = Path.home()
+        self._drag = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -245,6 +249,9 @@ class BrowserScreen(Screen):
                 yield Static(id="path")
                 yield Input(placeholder="filter files…", id="file-filter")
                 yield DataTable(id="files", cursor_type="row", zebra_stripes=True)
+                with Vertical(id="local-box"):
+                    yield Static(id="local-path")
+                    yield DataTable(id="local-files", cursor_type="row", zebra_stripes=True)
             yield InfoPanel(id="info")
         yield TransferPanel(id="transfers")
         yield Footer()
@@ -253,6 +260,8 @@ class BrowserScreen(Screen):
         table = self.query_one("#files", DataTable)
         table.add_columns(" ", "Name", "Size", "Perms")
         table.focus()
+        self.query_one("#local-files", DataTable).add_columns(" ", "Name", "Size")
+        self.query_one("#local-box").display = False
         hosts = self.query_one("#hosts", OptionList)
         names = list(self.app.config.hosts)
         if self.host.name in names:
@@ -317,21 +326,31 @@ class BrowserScreen(Screen):
 
     def on_data_table_row_selected(self, event):
         key = event.row_key.value
+        if event.data_table.id == "local-files":
+            if key == "..":
+                self.go_local(self.local_cwd.parent)
+            elif (self.local_cwd / key).is_dir():
+                self.go_local(self.local_cwd / key)
+            return
         if key == "..":
             self.action_up()
         elif key in self._by_name and self._by_name[key].is_dir:
             self.go(join_path(self.cwd, key))
 
     def action_up(self):
+        if self.focused is self.query_one("#local-files"):
+            return self.go_local(self.local_cwd.parent)
         if self.cwd not in ("/", "~"):
             self.go(join_path(self.cwd, ".."))
 
     def action_refresh(self):
         self.load()
+        self.load_local()
 
     def action_toggle_hidden(self):
         self.show_hidden = not self.show_hidden
         self.render_table()
+        self.load_local()
 
     def action_toggle_select(self):
         entry = self.current_entry()
@@ -370,6 +389,8 @@ class BrowserScreen(Screen):
 
     # --- info panel ---------------------------------------------------------------
     def on_data_table_row_highlighted(self, event):
+        if event.data_table.id != "files":
+            return
         key = event.row_key.value if event.row_key else None
         entry = self._by_name.get(key)
         info = self.query_one("#info", InfoPanel)
@@ -443,6 +464,7 @@ class BrowserScreen(Screen):
         self.running = False
         self._pump()
         self.load()
+        self.load_local()
 
     def action_download(self):
         names = self.targets()
@@ -493,13 +515,87 @@ class BrowserScreen(Screen):
             return self.app.call_from_thread(self.notify, str(e), severity="warning")
         self.app.call_from_thread(self.app.push_screen, TextViewScreen(f"{name} (first 50 lines)", text))
 
-    def _handoff(self, cmd):
-        with self.app.suspend():
-            subprocess.run(cmd)
-        self.load()
+    def _handoff(self, title, cmd):
+        self.app.push_screen(TerminalScreen(title, cmd), lambda _: (self.load(), self.load_local()))
 
+    # --- local pane + drag & drop ----------------------------------------------------------
+    def action_local(self):
+        box = self.query_one("#local-box")
+        box.display = not box.display
+        if box.display:
+            self.load_local()
+            self.query_one("#local-files").focus()
+            self.notify("Drag a row between the two panes to transfer it")
+        else:
+            self.query_one("#files").focus()
+
+    def go_local(self, path):
+        self.local_cwd = Path(path)
+        self.load_local()
+
+    def load_local(self):
+        if not self.query_one("#local-box").display:
+            return
+        try:
+            with os.scandir(self.local_cwd) as it:
+                items = [(e.name, e.is_dir(), e.stat().st_size if e.is_file() else 0) for e in it]
+        except OSError as e:
+            items = []
+            self.notify(f"{self.local_cwd}: {e.strerror or e}", severity="error")
+        items = [i for i in items if self.show_hidden or not i[0].startswith(".")]
+        items.sort(key=lambda i: (not i[1], i[0].lower()))
+        table = self.query_one("#local-files", DataTable)
+        table.clear()
+        self.query_one("#local-path", Static).update(f"[b]local[/b]:{escape(str(self.local_cwd))}")
+        if self.local_cwd.parent != self.local_cwd:
+            table.add_row("", "[dim]..[/dim]", "", key="..")
+        for name, is_dir, size in items:
+            label = escape(name) + ("/" if is_dir else "")
+            table.add_row("", f"[b #7aa2f7]{label}[/]" if is_dir else label, "" if is_dir else human(size), key=name)
+
+    def _table_at(self, x, y):
+        try:
+            widget = self.get_widget_at(x, y)[0]
+        except Exception:
+            return None
+        while widget is not None and widget is not self:
+            if isinstance(widget, DataTable) and widget.id in ("files", "local-files"):
+                return widget
+            widget = widget.parent
+        return None
+
+    def _row_key(self, table, row):
+        if row is None or not 0 <= row < table.row_count:
+            return None
+        return table.ordered_rows[row].key.value
+
+    def on_mouse_down(self, event):
+        self._drag = None
+        table = self._table_at(event.screen_x, event.screen_y)
+        key = self._row_key(table, event.style.meta.get("row")) if table else None
+        if key not in (None, "..", "__msg__"):
+            self._drag = (table.id, key)
+
+    def on_mouse_up(self, event):
+        drag, self._drag = self._drag, None
+        target = self._table_at(event.screen_x, event.screen_y)
+        if not drag or target is None or target.id == drag[0]:
+            return
+        source, key = drag
+        if source == "files":
+            names = [n for n in self._by_name if n in self.selected] if key in self.selected else [key]
+            for n in names:
+                self.enqueue(f"↓ {n}", "down", str(self.local_cwd) + "/", join_path(self.cwd, n))
+        else:
+            self.enqueue(f"↑ {key}", "up", str(self.local_cwd / key), self.cwd.rstrip("/") + "/")
+
+    @work(thread=True, exclusive=True, group="handoff")
     def action_sftp(self):
-        self._handoff(self.conn.sftp_cmd())
+        try:
+            cmd = self.conn.sftp_cmd(self.cwd)
+        except RemoteError:
+            cmd = self.conn.sftp_cmd()
+        self.app.call_from_thread(self._handoff, f"sftp {self.host.name}", cmd)
 
     def action_shell(self):
-        self._handoff(self.conn.shell_cmd())
+        self._handoff(f"ssh {self.host.name}", self.conn.shell_cmd())
