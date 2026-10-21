@@ -2,6 +2,7 @@
 
 from textual.app import App
 
+from .commands import SshFmCommands
 from .config import SSHConfig
 from .remote import Connection
 from .screens import BrowserScreen, ConnectingScreen, HostPickerScreen
@@ -11,6 +12,7 @@ class SshFmApp(App):
     CSS_PATH = "app.tcss"
     TITLE = "ssh-fm"
     SUB_TITLE = "SSH file manager"
+    COMMANDS = App.COMMANDS | {SshFmCommands}
 
     def __init__(self, config=None, connection_factory=Connection):
         super().__init__()
