@@ -125,3 +125,7 @@ test_configs/
 
 # brainstorming scratch
 .superpowers/
+
+# local tooling
+.claude/
+.serena/
