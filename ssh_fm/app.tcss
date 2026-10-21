@@ -1,0 +1,22 @@
+$accent: #7aa2f7;
+
+Screen { background: #1a1b26; color: #c0caf5; }
+Header { background: #16161e; color: $accent; }
+Footer { background: #16161e; }
+
+#cards { grid-size: 2; grid-gutter: 1 2; padding: 1 2; height: auto; }
+HostCard { border: round #3b4261; padding: 0 2; height: 5; background: #1f2335; }
+HostCard:hover { border: round #565f89; }
+HostCard:focus { border: round $accent; background: #24283b; }
+#empty { padding: 2 4; color: #565f89; }
+#filter { margin: 1 2 0 2; }
+
+ModalScreen { align: center middle; background: #00000080; }
+.dialog { width: 60; max-width: 95%; height: auto; max-height: 90%; border: round $accent; background: #1f2335; padding: 1 2; }
+.dialog .title { text-style: bold; color: $accent; margin-bottom: 1; }
+.buttons { height: auto; margin-top: 1; align-horizontal: right; }
+.buttons Button { margin-left: 2; }
+.form { height: 90%; }
+.form VerticalScroll { height: 1fr; }
+.form Label { margin-top: 1; }
+.form .title { margin-top: 0; }
