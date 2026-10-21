@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-10-21
+
+### Changed
+- Rewritten as a full-screen **Textual** TUI: host card picker, then a 3-column browser (hosts / files / file info) with a live transfer panel. Numbered menus are gone.
+- Code split into the `ssh_fm/` package; `install.sh` now installs into a private virtualenv (`~/.local/share/ssh-fm`).
+- All remote operations reuse one ssh ControlMaster connection (password / passphrase prompted once).
+
+### Added
+- Command palette (`ctrl+p`), host form modals, multi-select with `space`, file filter, hidden-file toggle.
+- Transfer queue with progress bar, speed and ETA (rsync).
+- `.pem` / `.key` identity files (picked from `~/.ssh` or any path, auto `chmod 600`).
+
 ## [1.0.0] - 2025-08-19
 
 ### 🎉 Initial Release
