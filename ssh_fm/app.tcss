@@ -38,3 +38,10 @@ LoadingIndicator { height: 3; color: $accent; }
 .hint { color: #565f89; margin-bottom: 1; }
 .viewer { width: 90%; height: 85%; }
 .viewer VerticalScroll { height: 1fr; }
+
+DataTable { background: #1a1b26; }
+DataTable > .datatable--header { background: #24283b; color: $accent; text-style: bold; }
+DataTable > .datatable--odd-row { background: #1a1b26; }
+DataTable > .datatable--even-row { background: #1f2335; }
+DataTable > .datatable--cursor { background: #3d59a1; color: #ffffff; }
+OptionList { background: #16161e; }

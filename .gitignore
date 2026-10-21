@@ -122,3 +122,6 @@ Thumbs.db
 # SSH Manager specific
 test_configs/
 *.backup
+
+# brainstorming scratch
+.superpowers/

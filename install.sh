@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# ssh-fm - SSH File Manager CLI - Installation Script
-echo "🔑 Installing ssh-fm (SSH File Manager CLI)..."
+# ssh-fm - SSH File Manager - Installation Script
+set -e
+echo "🔑 Installing ssh-fm (SSH File Manager)..."
+
+SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_DIR="${SSH_FM_HOME:-$HOME/.local/share/ssh-fm}"
 
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
@@ -9,28 +13,30 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Install the 'textual' dependency (required by ssh-fm)
-if ! python3 -c "import textual" &> /dev/null; then
-    echo "🔧 Installing 'textual' dependency..."
-    if python3 -m pip install textual &> /dev/null; then
-        echo "✅ textual installed"
-    else
-        echo "⚠️  Standard pip install failed (PEP 668?). Retrying with --break-system-packages..."
-        python3 -m pip install --user --break-system-packages textual || {
-            echo "❌ Failed to install 'textual'. Install it manually: python3 -m pip install textual"
-            exit 1
-        }
-        echo "✅ textual installed"
-    fi
+# Copy the app (package + entry point)
+mkdir -p "$APP_DIR"
+rm -rf "$APP_DIR/ssh_fm"
+cp -R "$SRC_DIR/ssh_fm" "$APP_DIR/ssh_fm"
+find "$APP_DIR/ssh_fm" -name __pycache__ -type d -prune -exec rm -rf {} +
+cp "$SRC_DIR/ssh-fm.py" "$SRC_DIR/requirements.txt" "$APP_DIR/"
+
+# Private virtualenv so we never touch system Python (works with PEP 668 too)
+echo "🔧 Installing dependencies (textual) into $APP_DIR/venv ..."
+if command -v uv &> /dev/null; then
+    uv venv -q --allow-existing "$APP_DIR/venv"
+    uv pip install -q --python "$APP_DIR/venv/bin/python" -r "$APP_DIR/requirements.txt"
 else
-    echo "✅ textual already installed"
+    [ -x "$APP_DIR/venv/bin/python" ] || python3 -m venv "$APP_DIR/venv"
+    "$APP_DIR/venv/bin/python" -m pip install -q -r "$APP_DIR/requirements.txt"
 fi
+echo "✅ Dependencies installed"
 
-# Create bin directory if it doesn't exist
+# Launcher in ~/bin
 mkdir -p "$HOME/bin"
-
-# Copy the script to bin directory
-cp ssh-fm.py "$HOME/bin/ssh-fm"
+cat > "$HOME/bin/ssh-fm" <<LAUNCHER
+#!/bin/sh
+exec "$APP_DIR/venv/bin/python" "$APP_DIR/ssh-fm.py" "\$@"
+LAUNCHER
 chmod +x "$HOME/bin/ssh-fm"
 
 # Detect the user's shell config file (works on macOS and Linux)

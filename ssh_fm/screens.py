@@ -212,15 +212,15 @@ class BrowserScreen(Screen):
     BINDINGS = [
         Binding("backspace", "up", "Up"),
         Binding("space", "toggle_select", "Select"),
-        Binding("full_stop", "toggle_hidden", "Hidden"),
+        Binding("full_stop", "toggle_hidden", "Hidden", show=False),
         Binding("slash", "filter", "Filter"),
-        Binding("r", "refresh", "Refresh"),
+        Binding("r", "refresh", "Refresh", show=False),
         Binding("u", "upload", "Upload"),
         Binding("d", "download", "Download"),
         Binding("v", "view", "View"),
         Binding("s", "sync", "Sync"),
         Binding("t", "sftp", "SFTP"),
-        Binding("S", "shell", "SSH shell"),
+        Binding("S", "shell", "Shell"),
         Binding("escape", "back", "Hosts"),
     ]
 
