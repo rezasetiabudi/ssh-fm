@@ -68,7 +68,8 @@ class SSHManager:
                     elif key_lower == 'user':
                         self.hosts[current_host]['user'] = value
                     elif key_lower == 'identityfile':
-                        self.hosts[current_host]['identity_file'] = value.replace('~', str(Path.home()))
+                        value = value.strip('"')
+                        self.hosts[current_host]['identity_file'] = value.replace('~', str(Path.home()), 1) if value.startswith('~') else value
                     elif key_lower == 'passwordauthentication':
                         self.hosts[current_host]['password_auth'] = value.lower() == 'yes'
     
@@ -90,6 +91,8 @@ class SSHManager:
                 config_lines.append(f"  User {config['user']}")
             if config['identity_file']:
                 identity_file = config['identity_file'].replace(str(Path.home()), '~')
+                if ' ' in identity_file:
+                    identity_file = f'"{identity_file}"'
                 config_lines.append(f"  IdentityFile {identity_file}")
             config_lines.append("  IdentitiesOnly yes")
             if config['password_auth']:
@@ -165,6 +168,49 @@ class SSHManager:
         except KeyboardInterrupt:
             print()
     
+    def select_identity_file(self):
+        """Pick a private key (id_*, .pem, .key) or enter a custom path.
+
+        Returns an absolute path, or '' for ssh's default key."""
+        ssh_dir = Path.home() / '.ssh'
+        key_files = []
+        if ssh_dir.is_dir():
+            for key_file in sorted(ssh_dir.iterdir()):
+                if not key_file.is_file() or key_file.suffix == '.pub':
+                    continue
+                if key_file.name.startswith('id_') or key_file.suffix in ('.pem', '.key'):
+                    key_files.append(key_file)
+
+        if key_files:
+            print("\nAvailable SSH keys:")
+            for i, key_file in enumerate(key_files, 1):
+                print(f"{i}. {key_file.name}")
+        print("Or type a path to a key file (e.g. ~/Downloads/server.pem)")
+
+        choice = input("Select key number / path (Enter for default): ").strip()
+        if not choice:
+            return ""
+        if choice.isdigit() and 1 <= int(choice) <= len(key_files):
+            return str(key_files[int(choice) - 1])
+
+        path = Path(choice).expanduser()
+        if not path.is_file():
+            print(f"{Colors.FAIL}Key file not found: {path}{Colors.ENDC}")
+            return ""
+        self.ensure_key_permissions(path)
+        return str(path.resolve())
+
+    def ensure_key_permissions(self, path):
+        """ssh refuses private keys readable by group/others (common with downloaded .pem)"""
+        if os.name == 'nt':
+            return
+        if path.stat().st_mode & 0o077:
+            try:
+                path.chmod(0o600)
+                print(f"{Colors.WARNING}Permissions on {path.name} were too open, set to 600.{Colors.ENDC}")
+            except OSError as e:
+                print(f"{Colors.FAIL}Could not chmod 600 {path}: {e}. ssh will reject this key.{Colors.ENDC}")
+
     def add_host(self):
         """Add a new SSH host"""
         print(f"{Colors.CYAN}Add New SSH Host{Colors.ENDC}\n")
@@ -187,24 +233,8 @@ class SSHManager:
         password_auth = False
         
         if auth_choice == "1":
-            # Show available keys
-            ssh_dir = Path.home() / '.ssh'
-            key_files = []
-            for key_file in ssh_dir.glob('id_*'):
-                if not key_file.name.endswith('.pub'):
-                    key_files.append(key_file)
-            
-            if key_files:
-                print("\nAvailable SSH keys:")
-                for i, key_file in enumerate(key_files, 1):
-                    print(f"{i}. {key_file.name}")
-                
-                key_choice = input("Select key number (or press Enter for default): ").strip()
-                if key_choice.isdigit() and 1 <= int(key_choice) <= len(key_files):
-                    identity_file = str(key_files[int(key_choice) - 1])
-            else:
-                identity_file = input("Key file path (optional): ").strip()
-        
+            identity_file = self.select_identity_file()
+
         elif auth_choice == "2":
             password_auth = True
         
@@ -269,8 +299,7 @@ class SSHManager:
             if new_user:
                 config['user'] = new_user
         elif choice == "4":
-            new_key = input(f"New identity file ({config['identity_file']}): ").strip()
-            config['identity_file'] = new_key
+            config['identity_file'] = self.select_identity_file()
         elif choice == "5":
             config['password_auth'] = not config['password_auth']
             print(f"Password auth set to: {'Yes' if config['password_auth'] else 'No'}")
