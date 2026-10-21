@@ -110,8 +110,9 @@ class Connection:
     def ssh_opts(self):
         return ["-o", f"ControlPath={self.control_dir}/%C"]
 
-    def master_cmd(self):
-        return ["ssh", *self.ssh_opts(), "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-fN", self.host]
+    def master_cmd(self, batch=False):
+        extra = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] if batch else []
+        return ["ssh", *self.ssh_opts(), *extra, "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-fN", self.host]
 
     def shell_cmd(self):
         return ["ssh", *self.ssh_opts(), self.host]
@@ -129,6 +130,11 @@ class Connection:
         return base + ([local, remote] if direction == "up" else [remote, local])
 
     # --- master connection ------------------------------------------------
+    def try_master(self):
+        """Silent attempt (no prompts). Returns (returncode, stderr)."""
+        r = subprocess.run(self.master_cmd(batch=True), capture_output=True, text=True)
+        return r.returncode, r.stderr
+
     def open_master(self):
         """Interactive (password / passphrase prompts); run inside app.suspend()."""
         return subprocess.run(self.master_cmd()).returncode

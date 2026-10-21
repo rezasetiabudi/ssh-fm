@@ -20,3 +20,11 @@ ModalScreen { align: center middle; background: #00000080; }
 .form VerticalScroll { height: 1fr; }
 .form Label { margin-top: 1; }
 .form .title { margin-top: 0; }
+
+#browser { height: 1fr; }
+#hosts { width: 20; border-right: solid #3b4261; background: #16161e; }
+#center { width: 1fr; }
+#path { padding: 0 1; color: #9aa5ce; }
+#info { width: 36; padding: 1 2; border-left: solid #3b4261; background: #16161e; }
+#files { height: 1fr; }
+LoadingIndicator { height: 3; color: $accent; }

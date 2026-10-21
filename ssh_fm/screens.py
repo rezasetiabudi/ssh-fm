@@ -1,13 +1,29 @@
 """Main screens: host picker (start) and remote browser"""
 
+import asyncio
+import threading
+
 from rich.markup import escape
+from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Grid
-from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, Static
+from textual.containers import Grid, Horizontal, Vertical
+from textual.screen import ModalScreen, Screen
+from textual.widgets import DataTable, Footer, Header, Input, LoadingIndicator, OptionList, Static
+from textual.widgets.option_list import Option
 
 from .modals import ConfirmScreen, HostFormScreen
+from .remote import RemoteError, join_path
+
+PROMPT_HINTS = ("permission denied", "passphrase", "password", "host key verification")
+
+
+def human(n):
+    n = float(n)
+    for unit in ("B", "K", "M", "G", "T"):
+        if n < 1024 or unit == "T":
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
 
 
 def fade_in(widget, duration=0.25):
@@ -150,3 +166,224 @@ class HostPickerScreen(Screen):
         host = self._current()
         if host:
             self.app.connect(host)
+
+
+class ConnectingScreen(ModalScreen):
+    """Opens the ssh master connection. Dismisses with None on success, else an error string."""
+
+    def __init__(self, host, connection):
+        super().__init__()
+        self.host = host
+        self.conn = connection
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Static(f"Connecting to [b]{escape(self.host.name)}[/b]…", classes="title")
+            yield LoadingIndicator()
+
+    def on_mount(self):
+        self.run_worker(self._connect(), exclusive=True)
+
+    async def _connect(self):
+        rc, err = 1, ""
+        if not self.host.password_auth:
+            rc, err = await asyncio.to_thread(self.conn.try_master)
+        if rc != 0 and (self.host.password_auth or any(h in err.lower() for h in PROMPT_HINTS)):
+            with self.app.suspend():  # let ssh prompt for password / passphrase / host key
+                rc = self.conn.open_master()
+            err = "" if rc == 0 else f"ssh exited with status {rc}"
+        self.dismiss(None if rc == 0 else (err.strip() or "Connection failed"))
+
+
+class InfoPanel(Static):
+    text = ""
+
+    def show(self, markup):
+        self.text = markup
+        self.update(markup)
+
+
+class BrowserScreen(Screen):
+    BINDINGS = [
+        Binding("backspace", "up", "Up"),
+        Binding("space", "toggle_select", "Select"),
+        Binding("full_stop", "toggle_hidden", "Hidden"),
+        Binding("slash", "filter", "Filter"),
+        Binding("r", "refresh", "Refresh"),
+        Binding("escape", "back", "Hosts"),
+    ]
+
+    def __init__(self, host, connection):
+        super().__init__()
+        self.host = host
+        self.conn = connection
+        self.cwd = "~"
+        self.entries = []
+        self.error = ""
+        self.show_hidden = True
+        self.selected = set()
+        self._by_name = {}
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Horizontal(id="browser"):
+            yield OptionList(*[Option(h.name, id=h.name) for h in self.app.config.hosts.values()], id="hosts")
+            with Vertical(id="center"):
+                yield Static(id="path")
+                yield Input(placeholder="filter files…", id="file-filter")
+                yield DataTable(id="files", cursor_type="row", zebra_stripes=True)
+            yield InfoPanel(id="info")
+        yield Footer()
+
+    def on_mount(self):
+        table = self.query_one("#files", DataTable)
+        table.add_columns(" ", "Name", "Size", "Perms")
+        table.focus()
+        hosts = self.query_one("#hosts", OptionList)
+        names = list(self.app.config.hosts)
+        if self.host.name in names:
+            hosts.highlighted = names.index(self.host.name)
+        self.query_one("#file-filter").display = False
+        self.query_one("#info").display = self.size.width >= 80
+        fade_in(self)
+        self.load()
+
+    def on_unmount(self):
+        threading.Thread(target=self.conn.close, daemon=True).start()
+
+    def on_resize(self, event):
+        self.query_one("#info").display = event.size.width >= 80
+
+    # --- listing --------------------------------------------------------------
+    @work(thread=True, exclusive=True, group="list")
+    def load(self):
+        try:
+            entries, error = self.conn.list_dir(self.cwd), ""
+        except RemoteError as e:
+            entries, error = [], str(e)
+        self.app.call_from_thread(self._show, entries, error)
+
+    def _show(self, entries, error):
+        self.entries, self.error = entries, error
+        self._by_name = {e.name: e for e in entries}
+        self.selected &= set(self._by_name)
+        self.render_table()
+
+    def render_table(self):
+        table = self.query_one("#files", DataTable)
+        needle = self.query_one("#file-filter", Input).value.strip().lower()
+        table.clear()
+        self.query_one("#path", Static).update(f"[b]{escape(self.host.name)}[/b]:{escape(self.cwd)}")
+        if self.cwd not in ("/", "~"):
+            table.add_row("", "[dim]..[/dim]", "", "", key="..")
+        shown = [e for e in self.entries
+                 if (self.show_hidden or not e.name.startswith(".")) and needle in e.name.lower()]
+        for e in shown:
+            name = escape(e.name) + ("/" if e.is_dir else "")
+            table.add_row("✓" if e.name in self.selected else "", f"[b #7aa2f7]{name}[/]" if e.is_dir else name,
+                          "" if e.is_dir else human(e.size), e.perms, key=e.name)
+        if self.error or not shown:
+            msg = self.error or ("(no matches)" if needle else "(empty)")
+            table.add_row("", f"[dim]{escape(msg)}[/dim]", "", "", key="__msg__")
+        if self.error:
+            self.notify(self.error, severity="error")
+
+    def current_entry(self):
+        table = self.query_one("#files", DataTable)
+        if not table.row_count:
+            return None
+        key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        return self._by_name.get(key)
+
+    # --- navigation -------------------------------------------------------------
+    def go(self, path):
+        self.cwd = path
+        self.selected.clear()
+        self.load()
+
+    def on_data_table_row_selected(self, event):
+        key = event.row_key.value
+        if key == "..":
+            self.action_up()
+        elif key in self._by_name and self._by_name[key].is_dir:
+            self.go(join_path(self.cwd, key))
+
+    def action_up(self):
+        if self.cwd not in ("/", "~"):
+            self.go(join_path(self.cwd, ".."))
+
+    def action_refresh(self):
+        self.load()
+
+    def action_toggle_hidden(self):
+        self.show_hidden = not self.show_hidden
+        self.render_table()
+
+    def action_toggle_select(self):
+        entry = self.current_entry()
+        if entry:
+            self.selected ^= {entry.name}
+            table = self.query_one("#files", DataTable)
+            row = table.cursor_row
+            self.render_table()
+            table.move_cursor(row=min(row + 1, table.row_count - 1))
+
+    def action_filter(self):
+        box = self.query_one("#file-filter", Input)
+        box.display = True
+        box.focus()
+
+    def on_input_changed(self, event):
+        if event.input.id == "file-filter":
+            self.render_table()
+
+    def on_input_submitted(self, event):
+        if event.input.id == "file-filter":
+            self.query_one("#files").focus()
+
+    def action_back(self):
+        box = self.query_one("#file-filter", Input)
+        if box.display:
+            box.value = ""
+            box.display = False
+            self.query_one("#files").focus()
+        else:
+            self.app.pop_screen()
+
+    def on_option_list_option_selected(self, event):
+        if event.option.id != self.host.name:
+            self.app.connect(self.app.config.hosts[event.option.id], replace=True)
+
+    # --- info panel ---------------------------------------------------------------
+    def on_data_table_row_highlighted(self, event):
+        key = event.row_key.value if event.row_key else None
+        entry = self._by_name.get(key)
+        info = self.query_one("#info", InfoPanel)
+        if key == "..":
+            info.show("[b]..[/b]\n[dim]Parent directory[/dim]")
+        elif entry is None:
+            info.show("")
+        else:
+            info.show(self.format_info(entry, ""))
+            self.fetch_info(entry)
+
+    def format_info(self, e, kind):
+        rows = [("Type", kind or ("directory" if e.is_dir else "…")), ("Size", f"{human(e.size)} ({e.size} B)"),
+                ("Perms", e.perms), ("Owner", f"{e.owner}:{e.group}"), ("Modified", e.mtime)]
+        body = "\n".join(f"[dim]{k:<9}[/dim]{escape(str(v))}" for k, v in rows)
+        return f"[b]{escape(e.name)}[/b]\n\n{body}"
+
+    @work(thread=True, exclusive=True, group="info")
+    def fetch_info(self, entry):
+        if entry.is_dir:
+            return
+        try:
+            kind = self.conn.file_info(join_path(self.cwd, entry.name))["type"]
+        except RemoteError:
+            return
+        self.app.call_from_thread(self._set_info, entry, kind)
+
+    def _set_info(self, entry, kind):
+        current = self.current_entry()
+        if current and current.name == entry.name:
+            self.query_one("#info", InfoPanel).show(self.format_info(entry, kind))

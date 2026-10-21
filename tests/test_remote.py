@@ -65,3 +65,10 @@ def test_transfer_cmd_uses_control_path_and_protect_args(tmp_path):
     assert cmd[-2:] == ["web:~/a b.txt", "/tmp/out"]
     up = c.transfer_cmd("up", "/tmp/in", "~/dest")
     assert up[-2:] == ["/tmp/in", "web:~/dest"]
+
+
+def test_master_cmd_batch_flag(tmp_path):
+    c = Connection("web", tmp_path)
+    assert "BatchMode=yes" in c.master_cmd(batch=True)
+    assert "BatchMode=yes" not in c.master_cmd()
+    assert "ControlMaster=yes" in c.master_cmd()

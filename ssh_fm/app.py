@@ -4,7 +4,7 @@ from textual.app import App
 
 from .config import SSHConfig
 from .remote import Connection
-from .screens import HostPickerScreen
+from .screens import BrowserScreen, ConnectingScreen, HostPickerScreen
 
 
 class SshFmApp(App):
@@ -20,9 +20,16 @@ class SshFmApp(App):
     def on_mount(self):
         self.push_screen(HostPickerScreen())
 
-    def connect(self, host):
-        """Replaced in Task 4"""
-        self.notify(f"connect {host.name}")
+    def connect(self, host, replace=False):
+        conn = self.connection_factory(host.name)
+
+        def done(error):
+            if error:
+                return self.notify(f"{host.name}: {error}", severity="error", timeout=10)
+            screen = BrowserScreen(host, conn)
+            self.switch_screen(screen) if replace else self.push_screen(screen)
+
+        self.push_screen(ConnectingScreen(host, conn), done)
 
 
 def main():
