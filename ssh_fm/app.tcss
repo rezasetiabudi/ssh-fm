@@ -28,3 +28,13 @@ ModalScreen { align: center middle; background: #00000080; }
 #info { width: 36; padding: 1 2; border-left: solid #3b4261; background: #16161e; }
 #files { height: 1fr; }
 LoadingIndicator { height: 3; color: $accent; }
+
+#transfers { height: auto; max-height: 8; border-top: solid #3b4261; background: #16161e; }
+.transfer-row { height: 1; padding: 0 1; }
+.t-icon { width: 3; }
+.t-label { width: 28; }
+.t-bar { width: 1fr; }
+.t-speed { width: 24; text-align: right; color: #9aa5ce; }
+.hint { color: #565f89; margin-bottom: 1; }
+.viewer { width: 90%; height: 85%; }
+.viewer VerticalScroll { height: 1fr; }

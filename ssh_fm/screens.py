@@ -1,7 +1,10 @@
 """Main screens: host picker (start) and remote browser"""
 
 import asyncio
+import subprocess
 import threading
+from collections import deque
+from pathlib import Path
 
 from rich.markup import escape
 from textual import work
@@ -12,8 +15,10 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, LoadingIndicator, OptionList, Static
 from textual.widgets.option_list import Option
 
-from .modals import ConfirmScreen, HostFormScreen
-from .remote import RemoteError, join_path
+from .modals import (ConfirmScreen, DestinationScreen, HostFormScreen, PathPromptScreen, SyncScreen,
+                     TextViewScreen)
+from .remote import RemoteError, join_path, run_transfer
+from .widgets import TransferPanel
 
 PROMPT_HINTS = ("permission denied", "passphrase", "password", "host key verification")
 
@@ -210,6 +215,12 @@ class BrowserScreen(Screen):
         Binding("full_stop", "toggle_hidden", "Hidden"),
         Binding("slash", "filter", "Filter"),
         Binding("r", "refresh", "Refresh"),
+        Binding("u", "upload", "Upload"),
+        Binding("d", "download", "Download"),
+        Binding("v", "view", "View"),
+        Binding("s", "sync", "Sync"),
+        Binding("t", "sftp", "SFTP"),
+        Binding("S", "shell", "SSH shell"),
         Binding("escape", "back", "Hosts"),
     ]
 
@@ -223,6 +234,8 @@ class BrowserScreen(Screen):
         self.show_hidden = True
         self.selected = set()
         self._by_name = {}
+        self.queue = deque()
+        self.running = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -233,6 +246,7 @@ class BrowserScreen(Screen):
                 yield Input(placeholder="filter files…", id="file-filter")
                 yield DataTable(id="files", cursor_type="row", zebra_stripes=True)
             yield InfoPanel(id="info")
+        yield TransferPanel(id="transfers")
         yield Footer()
 
     def on_mount(self):
@@ -387,3 +401,105 @@ class BrowserScreen(Screen):
         current = self.current_entry()
         if current and current.name == entry.name:
             self.query_one("#info", InfoPanel).show(self.format_info(entry, kind))
+
+    # --- actions: transfers ---------------------------------------------------------
+    def targets(self):
+        names = [n for n in self._by_name if n in self.selected]
+        if not names:
+            entry = self.current_entry()
+            names = [entry.name] if entry else []
+        return names
+
+    def enqueue(self, label, direction, local, remote):
+        row = self.query_one("#transfers", TransferPanel).add(label)
+        self.queue.append((row, label, direction, local, remote))
+        self._pump()
+
+    def _pump(self):
+        if not self.running and self.queue:
+            self.running = True
+            self._drain(self.query_one("#transfers", TransferPanel))
+
+    @work(thread=True, group="transfer")
+    def _drain(self, panel):
+        call = self.app.call_from_thread
+        while self.queue:
+            row, label, direction, local, remote = self.queue.popleft()
+            call(panel.mark_running, row)
+            try:
+                cmd = self.conn.transfer_cmd(direction, local, self.conn.expand(remote))
+                rc = run_transfer(cmd, lambda p, r=row: call(panel.update_progress, r, p))
+            except (RemoteError, OSError) as e:
+                call(self.notify, f"{label}: {e}", severity="error")
+                rc = 1
+            call(panel.finish, row, rc == 0)
+            if rc != 0:
+                call(self.notify, f"Transfer failed: {label}", severity="error")
+            elif not self.queue:
+                call(self.notify, f"Transfer complete: {label}")
+        call(self._drain_done)
+
+    def _drain_done(self):
+        self.running = False
+        self._pump()
+        self.load()
+
+    def action_download(self):
+        names = self.targets()
+        if not names:
+            return self.notify("Select a file first", severity="warning")
+
+        def chosen(dest):
+            if dest is None:
+                return
+            dest.mkdir(parents=True, exist_ok=True)
+            for n in names:
+                self.enqueue(f"↓ {n}", "down", str(dest) + "/", join_path(self.cwd, n))
+        self.app.push_screen(DestinationScreen(), chosen)
+
+    def action_upload(self):
+        def chosen(text):
+            if not text:
+                return
+            paths = [Path(p.strip()).expanduser() for p in text.replace("\n", ",").split(",") if p.strip()]
+            missing = [p for p in paths if not p.exists()]
+            if missing:
+                return self.notify(f"Local path not found: {missing[0]}", severity="error")
+            for p in paths:
+                self.enqueue(f"↑ {p.name}", "up", str(p), self.cwd.rstrip("/") + "/")
+        self.app.push_screen(PathPromptScreen("Upload to " + self.cwd, "Local file(s) or folder(s), separated by commas",
+                                              str(Path.cwd()) + "/"), chosen)
+
+    def action_sync(self):
+        def chosen(result):
+            if result:
+                direction, local, remote = result
+                arrow = "↑" if direction == "up" else "↓"
+                self.enqueue(f"{arrow} sync {local}", direction, local, remote)
+        self.app.push_screen(SyncScreen(self.cwd), chosen)
+
+    # --- actions: view / handoff --------------------------------------------------------
+    def action_view(self):
+        entry = self.current_entry()
+        if not entry or entry.is_dir:
+            return self.notify("Select a file to view", severity="warning")
+        self.read_file(entry.name)
+
+    @work(thread=True, exclusive=True, group="view")
+    def read_file(self, name):
+        try:
+            text = self.conn.read_head(join_path(self.cwd, name))
+        except RemoteError as e:
+            return self.app.call_from_thread(self.notify, str(e), severity="warning")
+        self.app.call_from_thread(self.app.push_screen, TextViewScreen(f"{name} (first 50 lines)", text))
+
+    def _handoff(self, cmd):
+        with self.app.suspend():
+            subprocess.run(cmd)
+        self.load()
+
+    def action_sftp(self):
+        self._handoff(self.conn.sftp_cmd())
+
+    def action_shell(self):
+        self._handoff(self.conn.shell_cmd())
