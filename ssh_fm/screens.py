@@ -15,9 +15,10 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, LoadingIndicator, OptionList, Static
 from textual.widgets.option_list import Option
 
-from .modals import (ConfirmScreen, DestinationScreen, HostFormScreen, PathPromptScreen, SyncScreen,
-                     TextViewScreen)
-from .remote import RemoteError, join_path, run_transfer
+from .modals import (ConfirmScreen, ConflictScreen, DestinationScreen, HostFormScreen, PathPromptScreen,
+                     ImportHostsScreen, SyncScreen, TextViewScreen)
+from .quickselect import QuickSelect
+from .remote import MODE_RE, RemoteError, join_path, perms_to_octal, run_transfer
 from .terminal import TerminalScreen
 from .widgets import TransferPanel
 
@@ -49,22 +50,25 @@ class HostPickerScreen(Screen):
     AUTO_FOCUS = "HostCard"
     BINDINGS = [
         Binding("enter", "connect", "Connect"),
-        Binding("n", "new", "New"),
-        Binding("e", "edit", "Edit"),
-        Binding("d", "delete", "Delete"),
+        Binding("alt+n", "new", "New"),
+        Binding("alt+e", "edit", "Edit"),
+        Binding("alt+d", "delete", "Delete"),
         Binding("slash", "filter", "Filter"),
         Binding("left", "move(-1)", show=False),
         Binding("right", "move(1)", show=False),
         Binding("up", "move(-2)", show=False),
         Binding("down", "move(2)", show=False),
         Binding("escape", "clear_filter", show=False),
-        Binding("q", "app.quit", "Quit"),
+        Binding("alt+i", "import_hosts", "Import"),
+        Binding("alt+q", "app.quit", "Quit"),
     ]
+
+    quick = QuickSelect()
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Input(placeholder="filter hosts…", id="filter")
-        yield Static("No hosts yet — press [b]n[/b] to add one", id="empty")
+        yield Static("No hosts yet — press [b]alt+n[/b] to add one or [b]alt+i[/b] to import from ssh config", id="empty")
         yield Grid(id="cards")
         yield Footer()
 
@@ -97,6 +101,17 @@ class HostPickerScreen(Screen):
     def _current(self):
         f = self.app.focused
         return f.host if isinstance(f, HostCard) else None
+
+    def on_key(self, event):
+        char = quick_char(event)
+        cards = self._visible()
+        if char and cards:
+            names = [c.host.name for c in cards]
+            cur = cards.index(self.app.focused) if self.app.focused in cards else -1
+            idx = self.quick.feed(char, names, cur)
+            event.stop()
+            if idx is not None:
+                cards[idx].focus()
 
     def on_input_changed(self, event):
         if event.input.id == "filter":
@@ -140,6 +155,22 @@ class HostPickerScreen(Screen):
                 self.notify(f"Host '{host.name}' added")
                 await self.refresh_cards(host.name)
         self.app.push_screen(HostFormScreen(), done)
+
+    def action_import_hosts(self):
+        async def done(chosen):
+            if not chosen:
+                return
+            added = 0
+            for host, exists in chosen:
+                try:
+                    self.app.config.update(host.name, host) if exists else self.app.config.add(host)
+                    added += 1
+                except ValueError as e:
+                    self.notify(str(e), severity="error")
+            if added:
+                self.notify(f"Imported {added} host(s)")
+                await self.refresh_cards(chosen[0][0].name)
+        self.app.push_screen(ImportHostsScreen(), done)
 
     def action_edit(self):
         old = self._current()
@@ -201,6 +232,14 @@ class ConnectingScreen(ModalScreen):
         self.dismiss(None if rc == 0 else (err.strip() or "Connection failed"))
 
 
+def quick_char(event):
+    """The typed character if it should drive quick select (plain printable key, no modifier, not a bound key)."""
+    ch = event.character
+    if not ch or not ch.isprintable() or ch in " ./" or "+" in event.key.replace("shift+", ""):
+        return None
+    return ch
+
+
 class InfoPanel(Static):
     text = ""
 
@@ -215,14 +254,18 @@ class BrowserScreen(Screen):
         Binding("space", "toggle_select", "Select"),
         Binding("full_stop", "toggle_hidden", "Hidden", show=False),
         Binding("slash", "filter", "Filter"),
-        Binding("r", "refresh", "Refresh", show=False),
-        Binding("u", "upload", "Upload"),
-        Binding("d", "download", "Download"),
-        Binding("v", "view", "View"),
-        Binding("s", "sync", "Sync"),
-        Binding("t", "local", "SFTP split"),
-        Binding("T", "sftp", "sftp term", show=False),
-        Binding("S", "shell", "Shell"),
+        Binding("f5,ctrl+r", "refresh", "Refresh", show=False),
+        Binding("alt+u", "upload", "Upload"),
+        Binding("alt+d", "download", "Download"),
+        Binding("alt+v", "view", "View"),
+        Binding("alt+s", "sync", "Sync"),
+        Binding("alt+t", "local", "SFTP split"),
+        Binding("alt+f", "sftp", "sftp term", show=False),
+        Binding("alt+h", "shell", "Shell"),
+        Binding("alt+x,delete", "remove", "Delete"),
+        Binding("alt+n", "mkdir", "New dir"),
+        Binding("alt+r,f2", "rename", "Rename", show=False),
+        Binding("alt+m", "chmod", "Perms", show=False),
         Binding("escape", "back", "Hosts"),
     ]
 
@@ -239,6 +282,12 @@ class BrowserScreen(Screen):
         self.queue = deque()
         self.running = False
         self.local_cwd = Path.home()
+        saved = self.app.state.get(f"local_cwd:{host.name}")
+        if saved and Path(saved).is_dir():
+            self.local_cwd = Path(saved)
+        self.local_selected = set()
+        self._local_names = []
+        self.quick = QuickSelect()
         self._drag = None
 
     def compose(self) -> ComposeResult:
@@ -248,10 +297,10 @@ class BrowserScreen(Screen):
             with Vertical(id="center"):
                 yield Static(id="path")
                 yield Input(placeholder="filter files…", id="file-filter")
-                yield DataTable(id="files", cursor_type="row", zebra_stripes=True)
+                yield DataTable(id="files", cursor_type="row", zebra_stripes=True, cursor_background_priority="css")
                 with Vertical(id="local-box"):
                     yield Static(id="local-path")
-                    yield DataTable(id="local-files", cursor_type="row", zebra_stripes=True)
+                    yield DataTable(id="local-files", cursor_type="row", zebra_stripes=True, cursor_background_priority="css")
             yield InfoPanel(id="info")
         yield TransferPanel(id="transfers")
         yield Footer()
@@ -268,11 +317,21 @@ class BrowserScreen(Screen):
             hosts.highlighted = names.index(self.host.name)
         self.query_one("#file-filter").display = False
         self.query_one("#info").display = self.size.width >= 80
-        fade_in(self)
         self.load()
 
     def on_unmount(self):
         threading.Thread(target=self.conn.close, daemon=True).start()
+
+    def on_key(self, event):
+        table = self.focused
+        char = quick_char(event)
+        if char and isinstance(table, DataTable):
+            event.stop()
+            keys = [r.key.value for r in table.ordered_rows]
+            rows = [(i, k) for i, k in enumerate(keys) if k not in ("..", "__msg__")]
+            hit = self.quick.feed(char, [k for _, k in rows], next((j for j, (i, _) in enumerate(rows) if i == table.cursor_row), -1))
+            if hit is not None:
+                table.move_cursor(row=rows[hit][0], scroll=True)
 
     def on_resize(self, event):
         self.query_one("#info").display = event.size.width >= 80
@@ -353,6 +412,8 @@ class BrowserScreen(Screen):
         self.load_local()
 
     def action_toggle_select(self):
+        if self.focused is self.query_one("#local-files"):
+            return self.toggle_local_select()
         entry = self.current_entry()
         if entry:
             self.selected ^= {entry.name}
@@ -466,8 +527,31 @@ class BrowserScreen(Screen):
         self.load()
         self.load_local()
 
+    def _local_focused(self):
+        return self.focused is self.query_one("#local-files")
+
+    def up_item(self, path):
+        return (f"↑ {path.name}", "up", str(path), self.cwd.rstrip("/") + "/", path.name in self._by_name)
+
+    def down_item(self, name, dest):
+        return (f"↓ {name}", "down", str(dest) + "/", join_path(self.cwd, name), (Path(dest) / name).exists())
+
+    def submit(self, items):
+        """Queue transfers; if destination names already exist ask: overwrite / skip existing / cancel."""
+        def go(choice):
+            for label, direction, local, remote, exists in items:
+                if choice == "overwrite" or not exists:
+                    self.enqueue(label, direction, local, remote)
+        clashes = [i[0][2:] for i in items if i[4]]
+        if clashes:
+            self.app.push_screen(ConflictScreen(clashes), lambda c: go(c) if c else None)
+        else:
+            go("overwrite")
+
     def action_download(self):
         names = self.targets()
+        if self._local_focused() and names:  # split view: no prompt, drop into the local pane's folder
+            return self.submit([self.down_item(n, self.local_cwd) for n in names])
         if not names:
             return self.notify("Select a file first", severity="warning")
 
@@ -475,11 +559,16 @@ class BrowserScreen(Screen):
             if dest is None:
                 return
             dest.mkdir(parents=True, exist_ok=True)
-            for n in names:
-                self.enqueue(f"↓ {n}", "down", str(dest) + "/", join_path(self.cwd, n))
+            self.submit([self.down_item(n, dest) for n in names])
         self.app.push_screen(DestinationScreen(), chosen)
 
     def action_upload(self):
+        if self._local_focused():
+            names = self.local_targets()
+            if not names:
+                return self.notify("Select a local file first", severity="warning")
+            return self.submit([self.up_item(self.local_cwd / n) for n in names])
+
         def chosen(text):
             if not text:
                 return
@@ -487,8 +576,7 @@ class BrowserScreen(Screen):
             missing = [p for p in paths if not p.exists()]
             if missing:
                 return self.notify(f"Local path not found: {missing[0]}", severity="error")
-            for p in paths:
-                self.enqueue(f"↑ {p.name}", "up", str(p), self.cwd.rstrip("/") + "/")
+            self.submit([self.up_item(p) for p in paths])
         self.app.push_screen(PathPromptScreen("Upload to " + self.cwd, "Local file(s) or folder(s), separated by commas",
                                               str(Path.cwd()) + "/"), chosen)
 
@@ -518,6 +606,86 @@ class BrowserScreen(Screen):
     def _handoff(self, title, cmd):
         self.app.push_screen(TerminalScreen(title, cmd), lambda _: (self.load(), self.load_local()))
 
+    # --- actions: remote file operations ------------------------------------------------
+    def _remote_focus_or_warn(self):
+        if self._local_focused():
+            self.notify("Focus the server pane first (this acts on remote files)", severity="warning")
+            return False
+        return True
+
+    @work(thread=True, group="fileops")
+    def _run_ops(self, ops, done):
+        call = self.app.call_from_thread
+        for op in ops:
+            try:
+                op()
+            except RemoteError as e:
+                call(self.notify, str(e), severity="error")
+                break
+        else:
+            call(self.notify, done)
+        call(self.load)
+
+    def action_remove(self):
+        if not self._remote_focus_or_warn():
+            return
+        names = self.targets()
+        if not names:
+            return self.notify("Select a file first", severity="warning")
+        shown = ", ".join(escape(n) for n in names[:3]) + (f" … +{len(names) - 3}" if len(names) > 3 else "")
+
+        def confirmed(yes):
+            if yes:
+                self.selected.clear()
+                self._run_ops([lambda n=n: self.conn.remove(join_path(self.cwd, n)) for n in names],
+                              f"Deleted {len(names)} item(s)")
+        self.app.push_screen(ConfirmScreen(f"Delete {shown} from {escape(self.host.name)}? This cannot be undone."), confirmed)
+
+    def action_mkdir(self):
+        if not self._remote_focus_or_warn():
+            return
+
+        def chosen(name):
+            if not name:
+                return
+            if "/" in name or name in self._by_name:
+                return self.notify(f"Invalid or existing name: {name}", severity="error")
+            self._run_ops([lambda: self.conn.mkdir(join_path(self.cwd, name))], f"Created {name}/")
+        self.app.push_screen(PathPromptScreen("New folder in " + self.cwd, "Folder name"), chosen)
+
+    def action_rename(self):
+        if not self._remote_focus_or_warn():
+            return
+        entry = self.current_entry()
+        if not entry:
+            return self.notify("Select a file first", severity="warning")
+
+        def chosen(new):
+            if not new or new == entry.name:
+                return
+            if "/" in new or new in self._by_name:
+                return self.notify(f"Invalid or existing name: {new}", severity="error")
+            self._run_ops([lambda: self.conn.rename(join_path(self.cwd, entry.name), join_path(self.cwd, new))],
+                          f"Renamed to {new}")
+        self.app.push_screen(PathPromptScreen("Rename " + entry.name, "New name", entry.name), chosen)
+
+    def action_chmod(self):
+        if not self._remote_focus_or_warn():
+            return
+        names = self.targets()
+        if not names:
+            return self.notify("Select a file first", severity="warning")
+        initial = perms_to_octal(self._by_name[names[0]].perms) if len(names) == 1 else ""
+
+        def chosen(mode):
+            if not mode:
+                return
+            if not MODE_RE.match(mode):
+                return self.notify("Use an octal mode (644) or symbolic (u+x,go-w)", severity="error")
+            self._run_ops([lambda n=n: self.conn.chmod(join_path(self.cwd, n), mode) for n in names],
+                          f"chmod {mode} on {len(names)} item(s)")
+        self.app.push_screen(PathPromptScreen(f"Permissions for {len(names)} item(s)", "Octal (644) or symbolic (u+x)", initial), chosen)
+
     # --- local pane + drag & drop ----------------------------------------------------------
     def action_local(self):
         box = self.query_one("#local-box")
@@ -531,6 +699,8 @@ class BrowserScreen(Screen):
 
     def go_local(self, path):
         self.local_cwd = Path(path)
+        self.app.state.set(f"local_cwd:{self.host.name}", str(self.local_cwd))
+        self.local_selected.clear()
         self.load_local()
 
     def load_local(self):
@@ -545,13 +715,31 @@ class BrowserScreen(Screen):
         items = [i for i in items if self.show_hidden or not i[0].startswith(".")]
         items.sort(key=lambda i: (not i[1], i[0].lower()))
         table = self.query_one("#local-files", DataTable)
+        self._local_names = [i[0] for i in items]
+        self.local_selected &= set(self._local_names)
         table.clear()
         self.query_one("#local-path", Static).update(f"[b]local[/b]:{escape(str(self.local_cwd))}")
         if self.local_cwd.parent != self.local_cwd:
             table.add_row("", "[dim]..[/dim]", "", key="..")
         for name, is_dir, size in items:
             label = escape(name) + ("/" if is_dir else "")
-            table.add_row("", f"[b #7aa2f7]{label}[/]" if is_dir else label, "" if is_dir else human(size), key=name)
+            table.add_row("✓" if name in self.local_selected else "", f"[b #7aa2f7]{label}[/]" if is_dir else label,
+                          "" if is_dir else human(size), key=name)
+
+    def toggle_local_select(self):
+        table = self.query_one("#local-files", DataTable)
+        key = self._row_key(table, table.cursor_row)
+        if key in self._local_names:
+            self.local_selected ^= {key}
+            row = table.cursor_row
+            self.load_local()
+            table.move_cursor(row=min(row + 1, table.row_count - 1))
+
+    def local_targets(self):
+        table = self.query_one("#local-files", DataTable)
+        names = [n for n in self._local_names if n in self.local_selected]
+        key = self._row_key(table, table.cursor_row)
+        return names or ([key] if key in self._local_names else [])
 
     def _table_at(self, x, y):
         try:
@@ -584,10 +772,10 @@ class BrowserScreen(Screen):
         source, key = drag
         if source == "files":
             names = [n for n in self._by_name if n in self.selected] if key in self.selected else [key]
-            for n in names:
-                self.enqueue(f"↓ {n}", "down", str(self.local_cwd) + "/", join_path(self.cwd, n))
+            self.submit([self.down_item(n, self.local_cwd) for n in names])
         else:
-            self.enqueue(f"↑ {key}", "up", str(self.local_cwd / key), self.cwd.rstrip("/") + "/")
+            names = [n for n in self._local_names if n in self.local_selected] if key in self.local_selected else [key]
+            self.submit([self.up_item(self.local_cwd / n) for n in names])
 
     @work(thread=True, exclusive=True, group="handoff")
     def action_sftp(self):

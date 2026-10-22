@@ -1,7 +1,7 @@
 import pytest
 
 from ssh_fm.app import SshFmApp
-from ssh_fm.config import Host, SSHConfig
+from ssh_fm.config import Host, SSHConfig, State
 from tests.fakes import FakeConnection
 
 
@@ -9,7 +9,7 @@ def make_app(tmp_path, hosts=("web", "db")):
     cfg = SSHConfig(tmp_path / "config")
     for h in hosts:
         cfg.add(Host(h, f"{h}.example.com", user="deploy"))
-    return SshFmApp(config=cfg, connection_factory=FakeConnection), cfg
+    return SshFmApp(config=cfg, connection_factory=FakeConnection, state=State(tmp_path / "state.json")), cfg
 
 
 async def test_picker_lists_cards_for_each_host(tmp_path):
@@ -28,7 +28,7 @@ async def test_empty_config_shows_hint(tmp_path):
 async def test_n_opens_form_and_saves_host(tmp_path):
     app, cfg = make_app(tmp_path, hosts=())
     async with app.run_test() as pilot:
-        await pilot.press("n")
+        await pilot.press("alt+n")
         await pilot.pause()
         screen = app.screen
         screen.query_one("#f-name").value = "prod"
@@ -45,7 +45,7 @@ async def test_n_opens_form_and_saves_host(tmp_path):
 async def test_form_rejects_bad_port(tmp_path):
     app, cfg = make_app(tmp_path, hosts=())
     async with app.run_test() as pilot:
-        await pilot.press("n")
+        await pilot.press("alt+n")
         await pilot.pause()
         app.screen.query_one("#f-name").value = "prod"
         app.screen.query_one("#f-port").value = "abc"
@@ -58,10 +58,10 @@ async def test_form_rejects_bad_port(tmp_path):
 async def test_delete_requires_confirm(tmp_path):
     app, cfg = make_app(tmp_path)
     async with app.run_test() as pilot:
-        await pilot.press("d", "n")
+        await pilot.press("alt+d", "n")
         await pilot.pause()
         assert "web" in cfg.hosts
-        await pilot.press("d", "y")
+        await pilot.press("alt+d", "y")
         await pilot.pause()
         assert "web" not in cfg.hosts and "db" in cfg.hosts
 
@@ -69,7 +69,7 @@ async def test_delete_requires_confirm(tmp_path):
 async def test_edit_renames_host(tmp_path):
     app, cfg = make_app(tmp_path)
     async with app.run_test() as pilot:
-        await pilot.press("e")
+        await pilot.press("alt+e")
         await pilot.pause()
         app.screen.query_one("#f-name").value = "web2"
         await pilot.click("#save")

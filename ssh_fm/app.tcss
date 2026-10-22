@@ -8,6 +8,9 @@ Footer { background: #16161e; }
 HostCard { border: round #3b4261; padding: 0 2; height: 5; background: #1f2335; }
 HostCard:hover { border: round #565f89; }
 HostCard:focus { border: round $accent; background: #24283b; }
+.importer { width: 90; height: 90%; }
+.importer TextArea { height: 12; }
+#import-preview-box { height: 1fr; margin-top: 1; }
 #empty { padding: 2 4; color: #565f89; }
 #filter { margin: 1 2 0 2; }
 
@@ -46,5 +49,10 @@ DataTable { background: #1a1b26; }
 DataTable > .datatable--header { background: #24283b; color: $accent; text-style: bold; }
 DataTable > .datatable--odd-row { background: #1a1b26; }
 DataTable > .datatable--even-row { background: #1f2335; }
-DataTable > .datatable--cursor { background: #3d59a1; color: #ffffff; }
+DataTable > .datatable--cursor,
+DataTable:focus > .datatable--cursor { background: #3d59a1; color: #ffffff; text-style: bold; }
+DataTable:blur > .datatable--cursor { background: #2b3f75; color: #ffffff; text-style: bold; }
+/* Textual treats cell (0,0) as "hovered" until the mouse moves, which would repaint the first row over the cursor */
+DataTable > .datatable--hover,
+DataTable:focus > .datatable--hover { background: transparent; color: auto; }
 OptionList { background: #16161e; }

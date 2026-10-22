@@ -8,10 +8,10 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Select, Static, OptionList
+from textual.widgets import Button, Checkbox, Input, Label, OptionList, Select, Static, TextArea
 from textual.widgets.option_list import Option
 
-from .config import Host, ensure_key_permissions, find_keys
+from .config import Host, ensure_key_permissions, find_keys, localize_identity, parse_ssh_config
 
 CUSTOM = "__custom__"
 
@@ -35,6 +35,103 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def action_answer(self, value: bool):
         self.dismiss(value)
+
+
+class ConflictScreen(ModalScreen["str | None"]):
+    """Some destination files already exist: dismisses with "overwrite", "skip" or None (cancel)."""
+    BINDINGS = [Binding("o", "answer('overwrite')", "Overwrite"), Binding("s", "answer('skip')", "Skip"),
+                Binding("escape", "answer(None)", "Cancel")]
+
+    def __init__(self, names):
+        super().__init__()
+        self.names = names
+
+    def compose(self) -> ComposeResult:
+        shown = ", ".join(escape(n) for n in self.names[:5]) + (f" … +{len(self.names) - 5} more" if len(self.names) > 5 else "")
+        with Vertical(classes="dialog"):
+            yield Label(f"{len(self.names)} item(s) already exist at the destination", classes="title")
+            yield Label(shown, classes="hint")
+            with Horizontal(classes="buttons"):
+                yield Button("Overwrite (o)", variant="error", id="overwrite")
+                yield Button("Skip existing (s)", variant="primary", id="skip")
+                yield Button("Cancel (esc)", id="cancel")
+
+    def on_button_pressed(self, event):
+        self.dismiss(None if event.button.id == "cancel" else event.button.id)
+
+    def action_answer(self, value):
+        self.dismiss(value)
+
+
+class ImportHostsScreen(ModalScreen["list | None"]):
+    """Paste ssh_config text; hosts are mapped automatically. Dismisses with [(Host, already_exists)]."""
+    BINDINGS = [Binding("escape", "cancel", "Cancel"), Binding("ctrl+s", "save", "Import")]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog importer"):
+            yield Label("Import hosts from ssh config", classes="title")
+            yield Label("Paste the text of a ~/.ssh/config (Host blocks) below", classes="hint")
+            yield TextArea(id="import-text")
+            yield Checkbox("Overwrite hosts that already exist", id="import-overwrite")
+            with VerticalScroll(id="import-preview-box"):
+                yield Static("", id="import-preview")
+            with Horizontal(classes="buttons"):
+                yield Button("Import (ctrl+s)", variant="primary", id="save")
+                yield Button("Cancel (esc)", id="cancel")
+
+    def on_mount(self):
+        self.query_one("#import-text").focus()
+        self._refresh()
+
+    def _plan(self):
+        """[(Host, exists, note, ignored_options)] for the pasted text."""
+        found, ignored = parse_ssh_config(self.query_one("#import-text", TextArea).text)
+        plan = []
+        for name, host in found.items():
+            host, note = localize_identity(host)
+            plan.append((host, name in self.app.config.hosts, note, ignored.get(name, [])))
+        return plan
+
+    def _selected(self):
+        overwrite = self.query_one("#import-overwrite", Checkbox).value
+        return [(h, ex) for h, ex, _, _ in self._plan() if overwrite or not ex]
+
+    def _refresh(self):
+        plan = self._plan()
+        overwrite = self.query_one("#import-overwrite", Checkbox).value
+        lines = []
+        for h, exists, note, ignored in plan:
+            mark = ("[yellow]~[/]" if overwrite else "[dim]=[/]") if exists else "[green]+[/]"
+            where = f"{h.user + '@' if h.user else ''}{h.hostname or h.name}:{h.port}"
+            tag = (" [dim](exists, " + ("will overwrite" if overwrite else "skipped") + ")[/]") if exists else ""
+            lines.append(f"{mark} [b]{escape(h.name)}[/b]  {escape(where)}{tag}")
+            if h.password_auth:
+                lines.append("    [dim]password login[/dim]")
+            if note:
+                lines.append(f"    [yellow]{escape(note)}[/yellow]")
+            if ignored:
+                lines.append(f"    [dim]ignored: {escape(', '.join(ignored))}[/dim]")
+        n = len(self._selected())
+        lines.append("" if not lines else f"\n[b]{n}[/b] host(s) will be imported")
+        self.query_one("#import-preview", Static).update("\n".join(lines) or "[dim]Nothing recognised yet[/dim]")
+
+    def on_text_area_changed(self, event):
+        self._refresh()
+
+    def on_checkbox_changed(self, event):
+        self._refresh()
+
+    def on_button_pressed(self, event):
+        self.action_save() if event.button.id == "save" else self.dismiss(None)
+
+    def action_save(self):
+        chosen = self._selected()
+        if not chosen:
+            return self.notify("No hosts to import", severity="warning")
+        self.dismiss(chosen)
+
+    def action_cancel(self):
+        self.dismiss(None)
 
 
 class HostFormScreen(ModalScreen["Host | None"]):

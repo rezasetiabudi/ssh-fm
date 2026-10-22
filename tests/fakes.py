@@ -1,3 +1,5 @@
+import dataclasses
+
 from ssh_fm.remote import Entry, RemoteError, join_path
 
 
@@ -19,6 +21,7 @@ class FakeConnection:
     def __init__(self, host, control_dir=None):
         self.host = host
         self.calls = []
+        self.tree = {k: list(v) for k, v in type(self).tree.items()}
 
     def try_master(self):
         return self.master
@@ -36,6 +39,23 @@ class FakeConnection:
         if path in self.denied:
             raise RemoteError("Permission denied")
         return list(self.tree.get(path, []))
+
+    def remove(self, path):
+        self.calls.append(("rm", path))
+        parent, name = path.rsplit("/", 1)
+        self.tree[parent] = [x for x in self.tree.get(parent, []) if x.name != name]
+
+    def rename(self, old, new):
+        self.calls.append(("mv", old, new))
+        parent, name = old.rsplit("/", 1)
+        self.tree[parent] = [dataclasses.replace(x, name=new.rsplit("/", 1)[1]) if x.name == name else x for x in self.tree.get(parent, [])]
+
+    def mkdir(self, path):
+        self.calls.append(("mkdir", path))
+        self.tree.setdefault(path.rsplit("/", 1)[0], []).append(e(path.rsplit("/", 1)[1], True))
+
+    def chmod(self, path, mode):
+        self.calls.append(("chmod", path, mode))
 
     def file_info(self, path):
         return {"name": path.rsplit("/", 1)[-1], "size": "42", "perms": "-rw-r--r--", "owner": "deploy",

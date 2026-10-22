@@ -1,3 +1,4 @@
+import pytest
 from textual.command import CommandPalette
 
 from ssh_fm.commands import SshFmCommands
@@ -41,5 +42,14 @@ async def test_ctrl_p_opens_palette(tmp_path):
     app = make_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.press("ctrl+p")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
+
+
+@pytest.mark.parametrize("key", ["ctrl+p", "alt+p"])
+async def test_palette_keys(tmp_path, key):
+    app = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.press(key)
         await pilot.pause()
         assert isinstance(app.screen, CommandPalette)

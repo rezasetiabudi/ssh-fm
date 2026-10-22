@@ -5,10 +5,15 @@ from textual.command import DiscoveryHit, Hit, Provider
 from .screens import BrowserScreen, HostPickerScreen
 
 PICKER = [("New host", "action_new", "Add a host to ~/.ssh/config"),
+          ("Import hosts", "action_import_hosts", "Paste ssh config text to add several hosts at once"),
           ("Edit host", "action_edit", "Edit the highlighted host"),
           ("Delete host", "action_delete", "Remove the highlighted host")]
 BROWSER = [("Upload", "action_upload", "Upload local files to this folder"),
            ("Download", "action_download", "Download the selected files"),
+           ("Delete", "action_remove", "Delete the selected remote files"),
+           ("Rename", "action_rename", "Rename the highlighted remote file"),
+           ("New folder", "action_mkdir", "Create a folder in this remote directory"),
+           ("Permissions", "action_chmod", "chmod the selected remote files"),
            ("Sync directory", "action_sync", "rsync a directory up or down"),
            ("SFTP split view", "action_local", "Show local files below; drag rows between panes"),
            ("SFTP terminal", "action_sftp", "Open a terminal sftp session"),

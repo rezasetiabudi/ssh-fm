@@ -9,21 +9,25 @@ Terminal UI untuk mengelola koneksi SSH dan transfer file dalam satu aplikasi: p
 - **Transfer dengan progress langsung** — upload/download satu atau banyak file (tandai dengan `space`), progress bar, kecepatan, dan ETA. Memakai `rsync`.
 - **Sync direktori** dua arah (local ↔ remote) dengan rsync.
 - **View file** kecil (50 baris pertama) tanpa download, plus panel SFTP split (server di atas, lokal di bawah, drag & drop), SFTP terminal, dan SSH shell — semuanya berjalan di dalam jendela ssh-fm (terminal tertanam, `Ctrl+]` untuk menutup).
-- **Command palette** (`ctrl+p`) untuk semua aksi.
+- **Command palette** (`alt+p`) untuk semua aksi.
 - **Manajemen host** lewat form — tambah, edit, rename, hapus. Disimpan di `~/.ssh/config`.
 - **Key `.pem` / `.key`** — pilih dari `~/.ssh` atau ketik path bebas; permission otomatis di-`chmod 600`.
 - **Password / passphrase** — ssh meminta langsung di terminal saat connect, lalu koneksi dipakai ulang (ControlMaster) untuk semua operasi.
 
 ## Shortcut Keyboard
 
+Huruf biasa dipakai untuk **quick select** (ketik `f` → lompat ke file berawalan f), jadi semua shortcut aksi memakai `alt+`. Di macOS aktifkan *Use Option as Meta key* di terminal agar `alt` berfungsi.
+
 ### Daftar host
 | Key | Aksi |
 | --- | --- |
 | `Enter` | Connect |
-| `n` / `e` / `d` | Host baru / edit / hapus |
+| `alt+n` / `alt+e` / `alt+d` | Host baru / edit / hapus |
+| `alt+i` | Import host dari teks ssh config yang di-paste |
+| *huruf biasa* | Quick select: lompat ke host berawalan huruf itu |
 | `/` | Filter |
-| `ctrl+p` | Command palette |
-| `q` | Keluar |
+| `alt+p` / `ctrl+p` / `super+p` | Command palette |
+| `alt+q` / `ctrl+q` | Keluar |
 
 ### Browser
 | Key | Aksi |
@@ -31,14 +35,16 @@ Terminal UI untuk mengelola koneksi SSH dan transfer file dalam satu aplikasi: p
 | `Enter` | Masuk folder |
 | `backspace` | Naik satu level |
 | `space` | Tandai file (multi-select) |
-| `u` / `d` | Upload / download (yang ditandai atau yang disorot) |
-| `v` | Lihat isi file |
-| `s` | Sync direktori (rsync) |
-| `t` | Panel SFTP split: file lokal di bawah, drag & drop antar panel |
-| `T` / `S` | Sesi sftp terminal / SSH shell (tertanam, `Ctrl+]` menutup) |
+| *huruf biasa* | Quick select: lompat ke file/folder berawalan huruf itu (ketik lagi untuk prefix; huruf sama diulang = berikutnya) |
+| `alt+u` / `alt+d` | Upload / download (yang ditandai atau yang disorot) |
+| `alt+v` | Lihat isi file |
+| `alt+s` | Sync direktori (rsync) |
+| `alt+x` / `alt+r` (`F2`) / `alt+n` / `alt+m` | Hapus / rename / folder baru / chmod file di server |
+| `alt+t` | Panel SFTP split: file lokal di bawah, drag & drop antar panel |
+| `alt+f` / `alt+h` | Sesi sftp terminal / SSH shell (tertanam, `Ctrl+]` menutup) |
 | `.` | Tampil/sembunyikan dotfiles |
 | `/` | Filter file |
-| `r` | Refresh |
+| `F5` / `ctrl+r` | Refresh |
 | `esc` | Kembali ke daftar host |
 
 ## Kebutuhan (Requirements)

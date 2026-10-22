@@ -75,6 +75,21 @@ def parse_progress(line):
     return Progress(int(pct), speed, eta)
 
 
+MODE_RE = re.compile(r"^([0-7]{3,4}|[ugoa]*[-+=][rwxXst]+(,[ugoa]*[-+=][rwxXst]+)*)$")
+
+
+def perms_to_octal(perms):
+    """'-rwxr-xr--' / 'drwxr-xr-x' -> '754' / '755' ('' if unparsable)."""
+    bits = perms[-9:]
+    if len(bits) != 9:
+        return ""
+    out = ""
+    for i in range(0, 9, 3):
+        r, w, x = bits[i:i + 3]
+        out += str((r == "r") * 4 + (w == "w") * 2 + (x in "xst") * 1)
+    return out
+
+
 def quote_path(path):
     """Quote for a remote shell while keeping a leading ~ expandable."""
     if path == "~":
@@ -179,6 +194,23 @@ class Connection:
             kind = ""
         return {"name": posixpath.basename(path.rstrip("/")) or path, "size": size, "perms": perms,
                 "owner": owner, "group": group, "mtime": mtime.split(".")[0], "type": kind}
+
+    # --- file operations (one remote command each) --------------------------------
+    def remove(self, path):
+        if path.rstrip("/") in ("", "~", "/"):
+            raise RemoteError(f"Refusing to delete {path or '(empty)'}")
+        self.run(f"rm -rf -- {quote_path(path)}")
+
+    def rename(self, old, new):
+        self.run(f"mv -n -- {quote_path(old)} {quote_path(new)}")
+
+    def mkdir(self, path):
+        self.run(f"mkdir -- {quote_path(path)}")
+
+    def chmod(self, path, mode):
+        if not MODE_RE.match(mode):
+            raise RemoteError(f"Invalid mode: {mode}")
+        self.run(f"chmod {mode} -- {quote_path(path)}")
 
     def read_head(self, path):
         q = quote_path(path)
