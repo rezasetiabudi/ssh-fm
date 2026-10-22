@@ -19,7 +19,7 @@ from .modals import (ConfirmScreen, ConflictScreen, DestinationScreen, HostFormS
                      ImportHostsScreen, SyncScreen, TextViewScreen)
 from .quickselect import QuickSelect
 from .remote import MODE_RE, RemoteError, join_path, perms_to_octal, run_transfer
-from .terminal import TerminalScreen
+from .terminal import CLOSE_KEY, TerminalScreen, TerminalView
 from .widgets import TransferPanel
 
 PROMPT_HINTS = ("permission denied", "passphrase", "password", "host key verification")
@@ -240,6 +240,40 @@ def quick_char(event):
     return ch
 
 
+class ServerInfo(Static):
+    """Left third of console mode: where we are connected and what the server is."""
+    local = remote = ""
+
+    def show_local(self, host):
+        auth = "password" if host.password_auth else (host.identity_file.rsplit("/", 1)[-1] or "default key")
+        rows = [("Alias", host.name), ("Host", host.hostname or host.name), ("Port", host.port), ("User", host.user or "—"),
+                ("Auth", auth)]
+        self.local, self.remote = self._section("Connection", rows), "\n\n[dim]Loading server info…[/dim]"
+        self._draw()
+
+    def show_remote(self, info):
+        if "error" in info:
+            self.remote = f"\n\n[red]{escape(info['error'])}[/red]"
+        else:
+            def row(label, *keys):
+                return (label, " · ".join(info[k] for k in keys if k in info) or "—")
+            net = [row("Server IP", "server_ip"), row("Your IP", "client_ip"), row("Your port", "client_port"),
+                   row("SSH port", "server_port")]
+            sysrows = [row("Hostname", "hostname"), row("OS", "os"), row("Kernel", "kernel", "arch"), row("Logged in", "user"),
+                       row("Uptime", "uptime"), row("Load", "load"), row("CPUs", "cpus"), row("Memory", "memory"),
+                       row("Disk (~)", "disk")]
+            self.remote = "\n\n" + self._section("Network", net) + "\n\n" + self._section("Server", sysrows)
+        self._draw()
+
+    @staticmethod
+    def _section(title, rows):
+        body = "\n".join(f"[dim]{k:<10}[/dim]{escape(str(v))}" for k, v in rows)
+        return f"[b #7aa2f7]{title}[/]\n{body}"
+
+    def _draw(self):
+        self.update(self.local + self.remote)
+
+
 class InfoPanel(Static):
     text = ""
 
@@ -288,10 +322,15 @@ class BrowserScreen(Screen):
         self.local_selected = set()
         self._local_names = []
         self.quick = QuickSelect()
+        self.console = None
         self._drag = None
 
     def compose(self) -> ComposeResult:
         yield Header()
+        with Horizontal(id="console-mode"):
+            yield ServerInfo(id="server-info")
+            with Vertical(id="console-box"):
+                yield Static(id="console-title")
         with Horizontal(id="browser"):
             yield OptionList(*[Option(h.name, id=h.name) for h in self.app.config.hosts.values()], id="hosts")
             with Vertical(id="center"):
@@ -323,6 +362,11 @@ class BrowserScreen(Screen):
         threading.Thread(target=self.conn.close, daemon=True).start()
 
     def on_key(self, event):
+        if self.console is not None:
+            if event.key == CLOSE_KEY or self.console.proc is None or self.console.proc.poll() is not None:
+                event.stop()
+                self.close_console()
+            return
         table = self.focused
         char = quick_char(event)
         if char and isinstance(table, DataTable):
@@ -603,8 +647,49 @@ class BrowserScreen(Screen):
             return self.app.call_from_thread(self.notify, str(e), severity="warning")
         self.app.call_from_thread(self.app.push_screen, TextViewScreen(f"{name} (first 50 lines)", text))
 
-    def _handoff(self, title, cmd):
-        self.app.push_screen(TerminalScreen(title, cmd), lambda _: (self.load(), self.load_local()))
+    # --- console mode: [server info 1/3 | terminal 2/3] replaces the 3-column browser -----------------
+    def open_console(self, title, cmd):
+        if self.console is not None:
+            return
+        self.query_one("#browser").display = False
+        self.query_one("#console-mode").display = True
+        self.query_one("#console-title", Static).update(f" {escape(title)}   [dim]Ctrl+] to close[/dim]")
+        self._title = title
+        self.console = TerminalView(cmd, id="console")
+        self.query_one("#console-box").mount(self.console)
+        self.console.focus()
+        self.query_one("#server-info", ServerInfo).show_local(self.host)
+        self.fetch_server_info()
+
+    def close_console(self):
+        console, self.console = self.console, None
+        if console is not None:
+            console.terminate()
+            console.remove()
+        self.query_one("#console-mode").display = False
+        self.query_one("#browser").display = True
+        self.query_one("#files").focus()
+        self.load()
+        self.load_local()
+
+    def on_terminal_view_exited(self, event):
+        if event.returncode == 0:
+            self.close_console()
+        elif self.console is not None:
+            self.query_one("#console-title", Static).update(
+                f" {escape(self._title)}   [b red]exited with status {event.returncode}[/] — press any key to close")
+
+    @work(thread=True, exclusive=True, group="server-info")
+    def fetch_server_info(self):
+        try:
+            info = self.conn.server_info()
+        except RemoteError as e:
+            info = {"error": str(e)}
+        self.app.call_from_thread(self._show_server_info, info)
+
+    def _show_server_info(self, info):
+        if self.console is not None:
+            self.query_one("#server-info", ServerInfo).show_remote(info)
 
     # --- actions: remote file operations ------------------------------------------------
     def _remote_focus_or_warn(self):
@@ -783,7 +868,7 @@ class BrowserScreen(Screen):
             cmd = self.conn.sftp_cmd(self.cwd)
         except RemoteError:
             cmd = self.conn.sftp_cmd()
-        self.app.call_from_thread(self._handoff, f"sftp {self.host.name}", cmd)
+        self.app.call_from_thread(self.open_console, f"sftp {self.host.name}", cmd)
 
     def action_shell(self):
-        self._handoff(f"ssh {self.host.name}", self.conn.shell_cmd())
+        self.open_console(f"ssh {self.host.name}", self.conn.shell_cmd())

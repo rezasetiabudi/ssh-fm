@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - All remote operations reuse one ssh ControlMaster connection (password / passphrase prompted once).
 
 ### Added
+- Console mode: shell / terminal sftp replace the 3-column browser with [server info 1/3 | console 2/3] (server IP, your IP, ports, hostname, OS, kernel, uptime, load, CPUs, memory, disk).
 - Quick select: plain letters jump to the file/folder/host starting with them (prefix typing, repeat to cycle). All action shortcuts moved to `alt+` (palette: `alt+p`, `ctrl+p`, `super+p`).
 - Cursor row is blue with white text in both panes (dimmer blue in the unfocused one); fixed first row not highlighting.
 - Import hosts (`i`): paste ssh config text, hosts are mapped automatically (HostName/Port/User/IdentityFile/password auth, multi-alias `Host a b`, `Key=value`); preview shows what is new/skipped/ignored, key paths missing locally are cleared.

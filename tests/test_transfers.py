@@ -7,7 +7,6 @@ from textual.widgets import Input
 from ssh_fm.modals import TextViewScreen
 from ssh_fm.remote import Progress
 from ssh_fm.screens import BrowserScreen
-from ssh_fm.terminal import TerminalScreen
 from tests.fakes import FakeConnection, e
 from tests.test_browser import go_to, make_app, open_browser, settle
 
@@ -131,26 +130,31 @@ async def test_upload_existing_files_queues_each(tmp_path, monkeypatch):
         assert all(c[1] == "up" and c[3].endswith("/") for c in calls)
 
 
-async def test_ssh_shell_opens_embedded_terminal(tmp_path):
+async def test_ssh_shell_opens_console_mode(tmp_path):
     app = make_app(tmp_path)
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(140, 40)) as pilot:
         screen = await open_browser(app, pilot)
         await pilot.press("alt+h")
         await settle(pilot)
-        assert isinstance(app.screen, TerminalScreen) and app.screen.cmd == ["fake-ssh", "web"]
-        await pilot.press("x")  # process failed to start (no such command): any key closes
+        assert app.screen is screen and screen.console.cmd == ["fake-ssh", "web"]
+        assert not screen.query_one("#browser").display and screen.query_one("#console-mode").display
+        info = screen.query_one("#server-info")
+        assert "10.0.0.9" in info.local + info.remote and "10.0.0.2" in info.remote and "web.example.com" in info.local
+        info_w, console_w = info.outer_size.width, screen.query_one("#console-box").outer_size.width
+        assert abs(console_w - 2 * info_w) <= 2  # 1/3 + 2/3
+        await pilot.press("x")  # command does not exist -> exited with status 127: any key closes
         await settle(pilot)
-        assert app.screen is screen
+        assert screen.console is None and screen.query_one("#browser").display
 
 
 async def test_sftp_opens_in_current_directory(tmp_path):
     app = make_app(tmp_path)
-    async with app.run_test() as pilot:
-        await open_browser(app, pilot)
-        app.screen.cwd = "/srv/app"
+    async with app.run_test(size=(140, 40)) as pilot:
+        screen = await open_browser(app, pilot)
+        screen.cwd = "/srv/app"
         await pilot.press("alt+f")
         await settle(pilot)
-        assert isinstance(app.screen, TerminalScreen) and app.screen.cmd == ["fake-sftp", "web", "/srv/app"]
+        assert screen.console.cmd == ["fake-sftp", "web", "/srv/app"]
 
 
 async def test_drag_between_panes_transfers(tmp_path, monkeypatch):

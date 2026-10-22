@@ -75,6 +75,15 @@ def parse_progress(line):
     return Progress(int(pct), speed, eta)
 
 
+INFO_SCRIPT = (
+    'echo "ssh_conn=$SSH_CONNECTION"; echo "hostname=$(hostname)"; '
+    'echo "os=$( . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -s)"; '
+    'echo "kernel=$(uname -r)"; echo "arch=$(uname -m)"; echo "user=$(id -un)"; '
+    'echo "uptime=$(uptime -p 2>/dev/null || uptime)"; echo "load=$(cut -d" " -f1-3 /proc/loadavg 2>/dev/null)"; '
+    'echo "cpus=$(nproc 2>/dev/null)"; '
+    'echo "memory=$(free -h 2>/dev/null | awk \'/^Mem:/{print $3 " / " $2}\')"; '
+    'echo "disk=$(df -h ~ 2>/dev/null | awk \'NR==2{print $3 " / " $2 " (" $5 ")"}\')"'
+)
 MODE_RE = re.compile(r"^([0-7]{3,4}|[ugoa]*[-+=][rwxXst]+(,[ugoa]*[-+=][rwxXst]+)*)$")
 
 
@@ -183,6 +192,15 @@ class Connection:
 
     def list_dir(self, path):
         return parse_ls(self.run(self.list_cmd(path)))
+
+    def server_info(self):
+        """Facts about the remote machine and about this SSH session, as a dict (missing keys are simply absent)."""
+        out = self.run(INFO_SCRIPT)
+        info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+        parts = info.pop("ssh_conn", "").split()
+        if len(parts) == 4:
+            info["client_ip"], info["client_port"], info["server_ip"], info["server_port"] = parts
+        return {k: v.strip() for k, v in info.items() if v.strip()}
 
     def file_info(self, path):
         q = quote_path(path)

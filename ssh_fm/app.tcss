@@ -25,6 +25,11 @@ ModalScreen { align: center middle; background: #00000080; }
 .form .title { margin-top: 0; }
 
 #browser { height: 1fr; }
+#console-mode { height: 1fr; display: none; }
+#server-info { width: 1fr; padding: 1 2; border-right: solid #3b4261; background: #16161e; overflow-y: auto; }
+#console-box { width: 2fr; }
+#console-title { height: 1; background: #16161e; color: #9aa5ce; padding: 0 1; }
+#console { height: 1fr; }
 #hosts { width: 20; border-right: solid #3b4261; background: #16161e; }
 #center { width: 1fr; }
 #path { padding: 0 1; color: #9aa5ce; }

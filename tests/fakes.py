@@ -57,6 +57,10 @@ class FakeConnection:
     def chmod(self, path, mode):
         self.calls.append(("chmod", path, mode))
 
+    def server_info(self):
+        return {"client_ip": "10.0.0.2", "client_port": "50000", "server_ip": "10.0.0.9", "server_port": "22",
+                "hostname": "web-1", "os": "Ubuntu 24.04", "kernel": "6.8.0", "user": "deploy"}
+
     def file_info(self, path):
         return {"name": path.rsplit("/", 1)[-1], "size": "42", "perms": "-rw-r--r--", "owner": "deploy",
                 "group": "www", "mtime": "2026-10-21 10:00:00", "type": "ASCII text"}

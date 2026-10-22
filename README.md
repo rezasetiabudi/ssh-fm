@@ -41,7 +41,7 @@ Huruf biasa dipakai untuk **quick select** (ketik `f` → lompat ke file berawal
 | `alt+s` | Sync direktori (rsync) |
 | `alt+x` / `alt+r` (`F2`) / `alt+n` / `alt+m` | Hapus / rename / folder baru / chmod file di server |
 | `alt+t` | Panel SFTP split: file lokal di bawah, drag & drop antar panel |
-| `alt+f` / `alt+h` | Sesi sftp terminal / SSH shell (tertanam, `Ctrl+]` menutup) |
+| `alt+f` / `alt+h` | Sesi sftp terminal / SSH shell: layout jadi 2 kolom, info server (1/3) + console (2/3); `Ctrl+]` menutup |
 | `.` | Tampil/sembunyikan dotfiles |
 | `/` | Filter file |
 | `F5` / `ctrl+r` | Refresh |
