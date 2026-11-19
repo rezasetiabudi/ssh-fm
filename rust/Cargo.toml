@@ -10,3 +10,8 @@ ratatui = "0.30.2"
 regex = "1.13.2"
 serde_json = "1.0.154"
 vt100 = "0.18.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

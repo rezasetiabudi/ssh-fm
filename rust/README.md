@@ -2,10 +2,23 @@
 
 Rewrite of ssh-fm in Rust with [ratatui](https://ratatui.rs). Same idea as the Python version: host cards → 3-pane SFTP browser with rsync transfers, embedded ssh/sftp terminal, command palette. Hosts live in `~/.ssh/config`.
 
+## Install
+
 ```bash
-cargo build --release        # binary: target/release/ssh-fm
-cargo test
+curl -sSf https://raw.githubusercontent.com/rezasetiabudi/ssh-fm/main/rust/install.sh | sh
 ```
+
+Downloads the prebuilt binary for your OS/arch (Linux and macOS, x86_64 and arm64) into `~/.local/bin`, verifying its checksum. No Rust needed.
+
+From source instead:
+
+```bash
+cargo install --git https://github.com/rezasetiabudi/ssh-fm --locked ssh-fm   # or: cd rust && cargo build --release
+```
+
+## Releasing (maintainers)
+
+`git tag v3.0.0 && git push --tags` — GitHub Actions tests, builds the four targets and attaches the tarballs + checksums to the release.
 
 Needs `ssh`, `rsync`, `sftp` on the machine (same as before). Single static-ish binary, no Python/venv.
 

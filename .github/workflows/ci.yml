@@ -1,0 +1,23 @@
+name: CI
+on:
+  push:
+    branches: [main, master]
+    paths: ["rust/**", ".github/workflows/**"]
+  pull_request:
+    paths: ["rust/**", ".github/workflows/**"]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo test --locked
