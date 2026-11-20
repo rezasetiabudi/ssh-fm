@@ -1,5 +1,5 @@
 name: Release
-# Push a tag like v3.0.0 to build binaries and publish them on the GitHub Release page.
+# Push a tag like v3.0.1 to build binaries and publish them on the GitHub Release page.
 on:
   push:
     tags: ["v*"]
@@ -12,7 +12,7 @@ jobs:
         include:
           - { os: ubuntu-latest,    target: x86_64-unknown-linux-gnu }
           - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
-          - { os: macos-13,         target: x86_64-apple-darwin }
+          - { os: macos-latest,     target: x86_64-apple-darwin } # cross-compiled on the arm64 runner
           - { os: macos-latest,     target: aarch64-apple-darwin }
     runs-on: ${{ matrix.os }}
     steps:
@@ -21,16 +21,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Test
-        working-directory: rust
         run: cargo test --locked
       - name: Build
-        working-directory: rust
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package
         run: |
           name=ssh-fm-${{ matrix.target }}
           mkdir "$name"
-          cp rust/target/${{ matrix.target }}/release/ssh-fm "$name/"
+          cp target/${{ matrix.target }}/release/ssh-fm "$name/"
           cp LICENSE "$name/"
           tar czf "$name.tar.gz" "$name"
           if command -v sha256sum >/dev/null; then sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"; else shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"; fi

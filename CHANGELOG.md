@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-11-19
+
+### Changed
+- **Rewritten in Rust** ([ratatui](https://ratatui.rs)). The Python/Textual implementation is gone; ssh-fm is now a single binary. Features and shortcuts are carried over.
+- Install via prebuilt release binaries (`install.sh`) instead of a Python virtualenv.
+
+### Added
+- Terminal: selecting text with the mouse copies it automatically; right click pastes (also into forms and the import dialog). OSC 52 fallback, scrollback with the mouse wheel.
+- Per-host `ProxyJump` (jump host) and `LocalForward` (port forwards), stored in `~/.ssh/config`.
+- Copy SSH key to server (`ssh-copy-id`), duplicate host, reconnect.
+- Mouse support everywhere: click, double-click, wheel, drag & drop between panes.
+- Fuzzy command palette; reuse of an already-open ssh master connection.
+- GitHub Actions: CI and tagged release builds for Linux/macOS (x86_64, arm64).
+
 ## [2.0.0] - 2026-10-21
 
 ### Changed
@@ -10,6 +24,8 @@ All notable changes to this project will be documented in this file.
 - All remote operations reuse one ssh ControlMaster connection (password / passphrase prompted once).
 
 ### Added
+- Command palette lists each action's shortcut next to its name; the footer's palette hint now shows `alt+p` instead of `^p`.
+- Terminal / console: pressing `Ctrl+C` twice quickly closes it (the first one still reaches the remote program).
 - Console mode: shell / terminal sftp replace the 3-column browser with [server info 1/3 | console 2/3] (server IP, your IP, ports, hostname, OS, kernel, uptime, load, CPUs, memory, disk).
 - Quick select: plain letters jump to the file/folder/host starting with them (prefix typing, repeat to cycle). All action shortcuts moved to `alt+` (palette: `alt+p`, `ctrl+p`, `super+p`).
 - Cursor row is blue with white text in both panes (dimmer blue in the unfocused one); fixed first row not highlighting.

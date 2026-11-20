@@ -1,78 +1,47 @@
-#!/bin/bash
-
-# ssh-fm - SSH File Manager - Installation Script
-set -e
-echo "🔑 Installing ssh-fm (SSH File Manager)..."
-
-SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_DIR="${SSH_FM_HOME:-$HOME/.local/share/ssh-fm}"
-
-# Check if Python 3 is available
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 is required but not installed. Please install Python 3 first."
-    exit 1
-fi
-
-# Copy the app (package + entry point)
-mkdir -p "$APP_DIR"
-rm -rf "$APP_DIR/ssh_fm"
-cp -R "$SRC_DIR/ssh_fm" "$APP_DIR/ssh_fm"
-find "$APP_DIR/ssh_fm" -name __pycache__ -type d -prune -exec rm -rf {} +
-cp "$SRC_DIR/ssh-fm.py" "$SRC_DIR/requirements.txt" "$APP_DIR/"
-
-# Private virtualenv so we never touch system Python (works with PEP 668 too)
-echo "🔧 Installing dependencies (textual) into $APP_DIR/venv ..."
-if command -v uv &> /dev/null; then
-    uv venv -q --allow-existing "$APP_DIR/venv"
-    uv pip install -q --python "$APP_DIR/venv/bin/python" -r "$APP_DIR/requirements.txt"
-else
-    [ -x "$APP_DIR/venv/bin/python" ] || python3 -m venv "$APP_DIR/venv"
-    "$APP_DIR/venv/bin/python" -m pip install -q -r "$APP_DIR/requirements.txt"
-fi
-echo "✅ Dependencies installed"
-
-# Launcher in ~/bin
-mkdir -p "$HOME/bin"
-cat > "$HOME/bin/ssh-fm" <<LAUNCHER
 #!/bin/sh
-exec "$APP_DIR/venv/bin/python" "$APP_DIR/ssh-fm.py" "\$@"
-LAUNCHER
-chmod +x "$HOME/bin/ssh-fm"
+# Install the latest ssh-fm release binary (no Rust needed).
+#   curl -sSf https://raw.githubusercontent.com/rezasetiabudi/ssh-fm/main/install.sh | sh
+# Env: INSTALL_DIR (default ~/.local/bin), SSH_FM_BASE_URL (override download location, for testing)
+set -eu
 
-# Detect the user's shell config file (works on macOS and Linux)
-SHELL_RC=""
-case "$SHELL" in
-    */zsh)
-        SHELL_RC="$HOME/.zshrc"
-        ;;
-    */bash)
-        SHELL_RC="$HOME/.bashrc"
-        ;;
-    */fish)
-        SHELL_RC="$HOME/.config/fish/config.fish"
-        ;;
-    *)
-        SHELL_RC="$HOME/.profile"
-        ;;
+REPO="rezasetiabudi/ssh-fm"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+BASE="${SSH_FM_BASE_URL:-https://github.com/$REPO/releases/latest/download}"
+
+os=$(uname -s)
+arch=$(uname -m)
+case "$os/$arch" in
+  Linux/x86_64)                target=x86_64-unknown-linux-gnu ;;
+  Linux/aarch64|Linux/arm64)   target=aarch64-unknown-linux-gnu ;;
+  Darwin/x86_64)               target=x86_64-apple-darwin ;;
+  Darwin/arm64)                target=aarch64-apple-darwin ;;
+  *) echo "No prebuilt binary for $os/$arch. Build from source: cargo install --git https://github.com/$REPO --locked ssh-fm" >&2; exit 1 ;;
 esac
 
-# Fallback: if the detected config file doesn't exist, use ~/.profile
-if [ ! -f "$SHELL_RC" ]; then
-    SHELL_RC="$HOME/.profile"
+for tool in ssh rsync sftp; do
+  command -v "$tool" >/dev/null 2>&1 || echo "warning: '$tool' not found - ssh-fm needs it at runtime" >&2
+done
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+name="ssh-fm-$target"
+
+echo "Downloading $name ..."
+curl -fsSL "$BASE/$name.tar.gz" -o "$tmp/$name.tar.gz" || {
+  echo "Download failed. Is there a release yet? Build from source instead:" >&2
+  echo "  cargo install --git https://github.com/$REPO --locked ssh-fm" >&2
+  exit 1
+}
+
+if curl -fsSL "$BASE/$name.tar.gz.sha256" -o "$tmp/$name.tar.gz.sha256" 2>/dev/null; then
+  expected=$(cut -d' ' -f1 "$tmp/$name.tar.gz.sha256")
+  if command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$tmp/$name.tar.gz" | cut -d' ' -f1)
+  else actual=$(shasum -a 256 "$tmp/$name.tar.gz" | cut -d' ' -f1); fi
+  [ "$expected" = "$actual" ] || { echo "Checksum mismatch - aborting." >&2; exit 1; }
 fi
 
-# Add ~/bin to PATH if not already present
-if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
-    mkdir -p "$(dirname "$SHELL_RC")"
-    echo 'export PATH="$HOME/bin:$PATH"' >> "$SHELL_RC"
-    echo "✅ Added ~/bin to PATH in $SHELL_RC"
-fi
-
-echo ""
-echo "🎉 ssh-fm installed successfully!"
-echo ""
-echo "📋 Next steps:"
-echo "1. Restart your terminal or run: source $SHELL_RC"
-echo "2. Run: ssh-fm"
-echo ""
-echo "💡 Need help? Check the README.md file"
+tar xzf "$tmp/$name.tar.gz" -C "$tmp"
+mkdir -p "$INSTALL_DIR"
+install -m 755 "$tmp/$name/ssh-fm" "$INSTALL_DIR/ssh-fm"
+echo "Installed $INSTALL_DIR/ssh-fm"
+case ":$PATH:" in *":$INSTALL_DIR:"*) ;; *) echo "Add to PATH:  export PATH=\"$INSTALL_DIR:\$PATH\"" ;; esac
